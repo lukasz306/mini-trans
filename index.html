@@ -1,4 +1,3 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <!DOCTYPE html>
 <html lang="pl">
 <head>
@@ -6,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.922</title>
+<title>Mini-trans by ŁL v0.924</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -124,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.922 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.924 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -8699,12 +8698,17 @@ function pmwCandidates(){
     if(WOJ_SEAT[N[a].woj]===a&&WOJ_SEAT[N[b].woj]===b&&cross)score*=1.4;
     if(!type)continue;if(!cross)score*=type==="event"?0.8:0.35;          /* zwykle przez granicę województwa */
     if(busy(a,b)||recent.has(a*1000+b))continue;
-    out.push({a,b,p,km,type,score,f,src:fa?fa.src:null});
+    out.push({a,b,p,km,type,score,f,cross,src:fa?fa.src:null});
   }
   return out.sort((x,y)=>y.score-x.score);
 }
+/* v0.924: losowy wybór spośród sensownych relacji (wielkość miast nie decyduje); miasta z 2 ostatnich przetargów — mniejsza szansa */
+function pmwPick(c){if(!c.length)return null;
+  const last=(GAME.pmwHist||[]).slice(-2),hit=i=>last.filter(x=>x.A===i||x.B===i).length;
+  const w=c.map(x=>(x.cross?1:0.4)*(x.type==="event"?1.5:1)*Math.pow(0.3,hit(x.a)+hit(x.b)));
+  let r=Math.random()*w.reduce((s,v)=>s+v,0);for(let i=0;i<c.length;i++){r-=w[i];if(r<=0)return c[i];}return c[c.length-1];}
 function pmwAnnounce(force){
-  const c=force||pmwCandidates()[0];if(!c)return null;
+  const c=force||pmwPick(pmwCandidates());if(!c)return null;
   const {a,b,p,km,type}=c,mag=type==="maglev";
   const hrs=17,trips=type==="long"?12:type==="event"?14:16;
   const req=mag?Object.assign({cat:2,vmin:500},N[a].woj!==N[b].woj?{inter:1}:{}):{inter:1,cat:1,vmin:160};
@@ -13713,10 +13717,6 @@ function openModeChooser(resume){
     const x=document.createElement("button");x.textContent="Ćwicz";x.style.cssText="font-size:11px;padding:4px 10px";
     x.onclick=()=>startMode(o.m);d.appendChild(x);b.appendChild(d);
   });
-  {const d=document.createElement("div");d.className="drow";d.style.cssText="align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--dim);margin-top:6px";
-    d.innerHTML="<span style='flex:1;font-size:11.5px'><b>🧪 Test</b><small style='display:block;color:var(--mut);font-size:10px'>Przewoźnik. Cała sieć jest już zbudowana, łącznie z CPK. Żaden przewoźnik jeszcze nie jeździ.</small></span>";
-    const x=document.createElement("button");x.textContent="Graj";x.style.cssText="font-size:11px;padding:4px 10px";
-    x.onclick=()=>startTest();d.appendChild(x);b.appendChild(d);}
   mdOvl.classList.add("show");
 }
 function startTest(){
@@ -14588,12 +14588,12 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.922";
+const GAME_VER="0.924";
 const CHANGELOG=[
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
  {v:"0.91",d:"październik 2026",c:["Przetargi na SKM albo SKM/R z wymaganym taktem.","Przetargi z wymaganą trasą (stacje pośrednie)."]},
  {v:"0.9",d:"październik 2026",c:["Nowe kategorie: MgLv (maglev, tylko po torze magnetycznym) i SKM (aglomeracje, takt od 5 min).","Takty od 30 min we wszystkich kategoriach regionalnych i dalekobieżnych."]},
- {v:"0.89",d:"październik 2026",c:["Scenariusz „Test” zamiast dotychczasowych scenariuszy.","Popyt: silniejsze więzi lokalne, gminne i powiatowe; uwzględnione dawne województwa i bliskość granic.","Okno stacji: drobne relacje zwinięte."]},
+ {v:"0.89",d:"październik 2026",c:["Usunięte dotychczasowe scenariusze.","Popyt: silniejsze więzi lokalne, gminne i powiatowe; uwzględnione dawne województwa i bliskość granic.","Okno stacji: drobne relacje zwinięte."]},
  {v:"0.87",d:"październik 2026",c:["Zakup kilku składów naraz z przypisaniem do linii.","Lista pociągów pogrupowana według linii, zaznaczanie wielu składów."]},
  {v:"0.86",d:"październik 2026",c:["Nowe linie: Warszawa – Siedlce – Czeremcha – Hajnówka – Białystok, Siedlce – Sokołów Podlaski.","Przetargi zarządcy w rundach, Przetarg Intercity, zakazy trakcji spalinowej."]},
  {v:"0.85",d:"październik 2026",c:["Układanie trasy linii krok po kroku.","Zmiana trasy linii po rozbudowie sieci tylko za zgodą gracza."]},
@@ -15400,8 +15400,12 @@ document.getElementById("svCopy").onclick=()=>copySaveCode();
 document.getElementById("svPaste").onclick=()=>{
   const t=document.getElementById("svText").value.trim();
   if(!t||t==="Przygotowuję kod…"){svStatus("Wklej najpierw kod albo treść zapisu.",1);return;}
+  if(t.length<40&&!/^(MT1:|\{)/.test(t)){testKey(t).then(ok=>{if(ok){document.getElementById("svText").value="";startTest();}else loadSaveInput(t,"kod zapisu");});return;}
   loadSaveInput(t,"kod zapisu");
 };
+/* v0.923: tryb Test ukryty — uruchamiany kodem (w grze tylko jego skrót SHA-256) */
+async function testKey(t){try{const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")==="bf21ef9d95db015849ebac031778bf95c1e0e8611be4e1b4fecc8e2f88fc72dc";}catch(e){return false;}}
 document.getElementById("svFile").onchange=e=>{const f=e.target.files&&e.target.files[0];if(f)importSave(f);e.target.value="";};
 /* upuszczenie pliku na okno zapisu */
 (function(){const m=svOvl;["dragenter","dragover"].forEach(ev=>m.addEventListener(ev,e=>{e.preventDefault();m.classList.add("drop");}));
@@ -15428,5 +15432,3 @@ document.getElementById("svNew").onclick=e=>
 </script>
 </body>
 </html>
-
-</body></html>
