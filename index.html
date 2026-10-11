@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.935</title>
+<title>Mini-trans by ŁL v0.936</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.935 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.936 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -5122,6 +5122,7 @@ function tenderDay(dayStart){
 /* v0.927: ostrzeżenie przewoźnika-gracza, gdy kursy przepadają z przyczyn po stronie linii (trasa za długa już w rozkładzie, wymogi) */
 function ctWarn(t,dnum){
   if((t.winner||0)!==0||t.org===0)return;
+  if((t.today.n||0)>=t.trips)return;                    /* v0.936: umowa wykonana — nie ma czego ostrzegać */
   const T=t.today,tt=T.tt||{},runs=(T.n||0)+(T.slow||0),msg=[];
   if(T.ss&&T.ss>=Math.max(2,runs*0.25)){
     const ls=Object.keys(tt).filter(id=>tt[id].ss).map(id=>{const l=lines.find(x=>x.id===+id);return (l?lineName(l):"L"+id)+": rozkładowo "+fmtT(tt[id].sch);});
@@ -14811,7 +14812,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.935";
+const GAME_VER="0.936";
 const CHANGELOG=[
  {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
