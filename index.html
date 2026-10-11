@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.924</title>
+<title>Mini-trans by ŁL v0.926</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.924 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.926 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -2901,7 +2901,11 @@ function tickTrain(tr,dt){
       if(mins<tr.depSlot-1e-9){
         tr.stuck=0;
         /* długie czekanie na kraniec: skład zjeżdża do zajezdni albo na bocznicę i zwalnia tor peronowy */
-        if(tr.depSlot-mins>25&&tr.mode!=="service")stablePlace(tr,r[i]);   /* brak miejsca odstawczego — czeka na peronie */
+        if(tr.depSlot-mins>25&&tr.mode!=="service"){stablePlace(tr,r[i]);return;}   /* brak miejsca odstawczego — czeka na peronie */
+        /* v0.926: kolejny skład tej samej linii czekający na krańcu (gęsty takt, SKM poza szczytem) nie zajmuje toru peronowego,
+           gdy na stacji robi się ciasno — zjeżdża na bocznicę / do zajezdni; wyjedzie, gdy przyjdzie jego kolej (needOut) */
+        if(tr.mode!=="service"&&cap(r[i])-occAt(r[i])<=2&&dwellCnt(tr.line,r[i])>1
+          &&trains.some(o=>o!==tr&&o.line===tr.line&&o.at===r[i]&&!o.inDepot&&o.state==="dwell"&&(o.stopT||0)>(tr.stopT||0)))stablePlace(tr,r[i]);
         return;
       }
     }
@@ -14118,9 +14122,10 @@ function renderTendersV5(body){
   }
   if(tenPart!=="open"){h+="<h4>Kontrakty w realizacji</h4>";
   if(!act.length)h+="<div class='sub'>Brak.</div>";}
-  (tenPart==="open"?[]:act).forEach(t=>{
+  /* v0.925: moje kontrakty osobno, kontrakty firm AI pogrupowane i zwinięte; sortowanie wg końca umowy */
+  const ctCard=(t,inner)=>{let h="";
     const left=Math.max(0,Math.ceil((t.end-mins)/1440));
-    h+="<div class='lnrow'><b>"+N[t.A].n+" – "+N[t.B].n+"</b> · <span style='color:"+(ownerCol(t.winner)||"var(--green)")+"'>"+ownerName(t.winner||0)+"</span>"
+    h+=(inner?"<div>":"<div class='lnrow'><b>"+N[t.A].n+" – "+N[t.B].n+"</b> · <span style='color:"+(ownerCol(t.winner)||"var(--green)")+"'>"+ownerName(t.winner||0)+"</span>")
       +"<div class='st'>"+t.trips+" kursów/dobę · ≤ "+fmtT(t.tmax)+" · dopłata "+fmt(t.reward)+"/mies. · zostało "+monthsTxt(left)
       +tenderReqHtml(t)+pmwHtml(t)+ctHoldHtml(t)+(t.newSeg?"<br><small style='color:var(--mut)'>🆕 Przetarg na nowo otwarty odcinek</small>":"")
       +"<br>W tym miesiącu: <b class='"+(t.today.n>=t.trips?"good":"mid")+"'>"+t.today.n+"/"+t.trips+"</b>"
@@ -14151,7 +14156,23 @@ function renderTendersV5(body){
           +(bad.length?"<br>Realizują bez ochrony slotów: "+bad.join("; "):"")
           +(!ok.length&&!bad.length?"<br><span class='bad'>Żadna linia nie realizuje tego kontraktu"+(nog.length?" zgodnie z wymogami":"")+"</span>":"")+"</small>";})()
       +"</div></div>";
-  });
+    return h;};
+  if(tenPart!=="open"&&act.length){
+    const srt=a=>a.slice().sort((x,y)=>(x.end||0)-(y.end||0));
+    const mine=isMgr()?[]:srt(act.filter(t=>!t.winner)),oth=srt(act.filter(t=>isMgr()||t.winner));
+    if(mine.length){h+="<div style='font-size:11px;color:var(--green);margin:4px 0 2px;letter-spacing:.5px;text-transform:uppercase'>Moje kontrakty ("+mine.length+")</div>";mine.forEach(t=>{h+=ctCard(t);});}
+    if(oth.length){
+      h+="<div style='font-size:11px;color:var(--mut);margin:10px 0 2px;letter-spacing:.5px;text-transform:uppercase'>"+(isMgr()?"Kontrakty przewoźników":"Kontrakty konkurencji")+" ("+oth.length+")</div>";
+      const ids=[...new Set(oth.map(t=>t.winner||0))];
+      ids.forEach(o=>{const L=oth.filter(t=>(t.winner||0)===o);
+        h+="<div style='margin:6px 0 2px;font-weight:600;color:"+(ownerCol(o)||"var(--ink)")+"'>"+ownerName(o)+" <small style='color:var(--mut);font-weight:400'>("+L.length+")</small></div>";
+        L.forEach(t=>{const left=Math.max(0,Math.ceil((t.end-mins)/1440)),okM=t.today.n>=t.trips,last=t.log.length?(t.log[0].ok?"✅":t.log[0].fm===2?"⚖️":t.log[0].fm===1?"🟧":"❌"):"";
+          h+="<details class='lnrow' style='display:block'"+detAttr("ct"+t.id)+"><summary style='cursor:pointer'><b>"+N[t.A].n+" – "+N[t.B].n+"</b>"
+            +"<span class='st'> · "+t.trips+" kursów/dobę · "+fmt(t.reward)+"/mies. · "+monthsTxt(left)+" · <b class='"+(okM?"good":"mid")+"'>"+t.today.n+"/"+t.trips+"</b>"+(last?" "+last:"")+(t.pmw?" · 🗺️ IC":"")+"</span></summary>"
+            +ctCard(t,true)+"</details>";});
+      });
+    }
+  }
   if(tenPart!=="act"){h+="<h4>"+(isMgr()?"Ogłoszone — czekają na rozstrzygnięcie":"Otwarte przetargi")+"</h4>";
   if(!off.length)h+="<div class='sub'>Brak.</div>";}
   body.innerHTML=h;
@@ -14588,7 +14609,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.924";
+const GAME_VER="0.926";
 const CHANGELOG=[
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
  {v:"0.91",d:"październik 2026",c:["Przetargi na SKM albo SKM/R z wymaganym taktem.","Przetargi z wymaganą trasą (stacje pośrednie)."]},
