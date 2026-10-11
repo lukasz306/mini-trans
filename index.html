@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.938</title>
+<title>Mini-trans by ŁL v0.939</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.938 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.939 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -1964,6 +1964,9 @@ function passingIdxAhead(tr,fromIdx){
 function hopFor(tr,from,d){
   const r=tr.route,here=tr.ri;
   let best=null;const S=trStops(tr);
+  /* v0.939: cel dalej na trasie, także za zajazdem (trasa wraca przez te same stacje) — wsiada, gdy objazd ≤ +60% (lub +12 km) */
+  {let km=0;for(let k=here+tr.step;k>=0&&k<r.length;k+=tr.step){const e=edgeId(r[k-tr.step],r[k]);km+=e!=null&&EDGES[e]?EDGES[e].km:0;
+      if(r[k]===d){if(stopsAt(tr.cat,d,r,S,k,tr.step)){const pk=pathKm(from,d);if(pk>0&&km<=Math.max(pk*1.6,pk+12))return d;}break;}}}
   for(let k=here+tr.step;k>=0&&k<r.length;k+=tr.step){
     const nd=r[k];
     if(!stopsAt(tr.cat,nd,r,S,k,tr.step))continue;
@@ -14825,7 +14828,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.938";
+const GAME_VER="0.939";
 const CHANGELOG=[
  {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
