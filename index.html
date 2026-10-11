@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.934</title>
+<title>Mini-trans by ŁL v0.935</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.934 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.935 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -5072,10 +5072,11 @@ function acceptTender(t){
 function tenderDay(dayStart){
   for(const t of V4.tenders){
     if(t.state==="offer"&&mins>=t.expires){t.state="expired";continue;}
+    if(typeof ctBrdDay==="function"&&ctBrdDay(t,dayStart))continue;   /* v0.935: zamknięte przejście graniczne — umowa zawieszona */
     if(typeof ctHoldDay==="function"&&ctHoldDay(t,dayStart))continue;
     if(t.state!=="active"||dayStart<=t.start)continue;
     const ok=t.today.n>=t.trips,dnum=Math.round((dayStart-t.start)/1440);
-    const grace=dnum<=1;
+    const grace=dnum<=1||(t.graceTo!=null&&dayStart<=t.graceTo);
     t.log.unshift({d:dnum,n:t.today.n,slow:t.today.slow,ok});if(t.today.ss)t.log[0].ss=t.today.ss;
     if(!grace)ctWarn(t,dnum);
     if(t.log.length>40)t.log.pop();
@@ -7719,6 +7720,46 @@ function ctHoldDay(t,dayStart){
     return true;}
   t.start=Math.max(t.start,dayStart);t.end=t.start+t.days*1440;t.today={n:0,slow:0};
   return true;}
+/* ==================== v0.935: KONTRAKTY PRZEZ ZAMKNIĘTE PRZEJŚCIE GRANICZNE ====================
+   Na czas zamknięcia umowa jest zawieszona (bez dopłat i kar), a jej koniec przesuwa się o czas zamknięcia.
+   Po otwarciu pierwszy miesiąc bez kar. Co 3 miesiące zamknięcia przewoźnik decyduje: rozwiązanie bez kar albo dalsze czekanie. */
+function ctBrdKey(t){
+  if(typeof BRD_DEF==="undefined"||!EV.flags||!EV.flags.brd)return null;
+  for(const k in BRD_DEF){const B=EV.flags.brd[k];if(!B||(B.open&&B.intl))continue;const f=brdIx(BRD_DEF[k].f);if(f<0)continue;
+    if(t.A===f||t.B===f)return k;
+    const e=brdEdge(k);if(e!=null&&t.pathFix&&routeEdges(t.pathFix).indexOf(e)>=0)return k;}
+  return null;}
+function ctBrdDay(t,dayStart){
+  if(t.state!=="active")return false;
+  const k=ctBrdKey(t),mine=(t.winner||0)===0||t.org===0;
+  if(!k){if(!t.brd)return false;
+    const was=t.brd;delete t.brd;t.graceTo=dayStart+1440;t.today={n:0,slow:0};t.prev=null;
+    const txt="Przejście graniczne znów otwarte — umowa "+contractName(t)+" ("+ownerName(t.winner||0)+") wznowiona po "+monthsTxt(Math.max(1,Math.round((dayStart-was.since)/1440)))+" zawieszenia. Koniec umowy: "+dateTxt(t.end)+". Pierwszy miesiąc bez kar.";
+    if(mine)v4Pop({icon:"🛂",t:"Kontrakt wznowiony",k:"C",text:txt,lines:[]});else v4News("🛂 "+txt);
+    return false;}
+  const D=BRD_DEF[k];
+  if(!t.brd){t.brd={since:dayStart,k,ask:dayStart+3*1440};
+    const txt="Przejście "+D.n+" jest zamknięte — umowa "+contractName(t)+" ("+ownerName(t.winner||0)+") zostaje zawieszona: bez dopłat i kar, a jej koniec przesuwa się o czas zamknięcia. Po 3 miesiącach zamknięcia przewoźnik może ją rozwiązać bez kar.";
+    if(mine)v4Pop({icon:"🚧",t:"Kontrakt zawieszony — granica zamknięta",k:"D",text:txt,lines:[]});else v4News("🚧 "+txt);}
+  t.end+=1440;if(t.start>=dayStart)t.start+=1440;t.today={n:0,slow:0};       /* miesiąc zamknięcia się nie liczy */
+  if(dayStart>=t.brd.ask&&!t.brd.asked){const mo=Math.round((dayStart-t.brd.since)/1440);
+    if((t.winner||0)===0&&t.org!==0){t.brd.asked=1;
+      evQueue({id:"ctBrd",k:"D",icon:"🚧",t:"Granica wciąż zamknięta: "+contractName(t),at:mins,pending:true,data:{tid:t.id},
+        text:"Przejście "+D.n+" jest zamknięte od "+monthsTxt(mo)+". Umowa "+contractName(t)+" pozostaje zawieszona (bez dopłat i kar, koniec przesunięty na "+dateTxt(t.end)+"). Możesz ją teraz rozwiązać bez kar albo czekać na otwarcie.",
+        opts:[{l:"Rozwiązuję umowę bez kar",s:"tabor i linie zostają do Twojej dyspozycji"},{l:"Czekam na otwarcie przejścia",s:"umowa dalej zawieszona; pytanie wróci za 3 miesiące"}],lines:[]});}
+    else{const f=t.winner?firmById(t.winner):null,left=(t.end-dayStart)/1440;
+      if(!f||f.state!=="on"||f.crisis||mo>=9||left<t.days*0.5)ctBrdEnd(t,mo);else{t.brd.ask=dayStart+3*1440;v4News("🚧 "+ownerName(t.winner)+" czeka na otwarcie przejścia "+D.n+" — umowa "+contractName(t)+" dalej zawieszona.");}}}
+  return true;}
+function ctBrdEnd(t,mo){t.state="void";const was=t.brd;delete t.brd;
+  if(t.winner){const f=firmById(t.winner);if(f&&f.cq)f.cq=f.cq.filter(x=>x!==t.id);}
+  const txt="Umowa "+contractName(t)+" ("+ownerName(t.winner||0)+") rozwiązana bez kar po "+monthsTxt(mo)+" zamknięcia przejścia granicznego.";
+  if((t.winner||0)===0||t.org===0)v4Pop({icon:"📜",t:"Umowa rozwiązana",k:"C",text:txt,lines:[]});else v4News("📜 "+txt);}
+EVMAP.ctBrd={choose(k,d){const t=V4.tenders.find(x=>x.id===d.tid);if(!t||!t.brd||t.state!=="active")return {text:"Sprawa już nieaktualna.",lines:[]};
+  const mo=Math.max(1,Math.round((mins-t.brd.since)/1440));
+  if(k===0){ctBrdEnd(t,mo);return {text:"Umowa rozwiązana bez kar.",lines:[]};}
+  t.brd.asked=0;t.brd.ask=Math.floor(mins/1440)*1440+3*1440;return {text:"Umowa dalej zawieszona do otwarcia przejścia (koniec przesunięty na "+dateTxt(t.end)+").",lines:[]};}};
+function ctBrdHtml(t){const B=t&&t.brd;if(!B)return "";
+  return "<br><span class='mid'>🚧 Zawieszona: przejście "+BRD_DEF[B.k].n+" zamknięte od "+dateTxt(B.since)+" · bez dopłat i kar · koniec przesuwa się o czas zamknięcia ("+dateTxt(t.end)+")</span>";}
 function ctHoldHtml(t){const H=t&&t.hold;if(!H)return "";const nd=ctInfraNeed(t);
   return "<br><span class='mid'>⏳ Czeka na infrastrukturę: "+(nd.cost>0?ctNeedTxt(nd):"odbiór torów")+" · "
     +(isOp()&&H.due!=null?"zarządca planuje oddanie "+dateTxt(H.due):"prace po stronie zarządcy (Ty)")
@@ -13626,7 +13667,7 @@ function renderMarket(){
       const pct=t.trips?Math.round(t.today.n/t.trips*100):0;
       h+="<div class='lnrow'><b>"+N[t.A].n+" – "+N[t.B].n+"</b><div class='st'>"
         +t.trips+" kursów/dobę (obie strony) w godz. "+tenderHoursTxt(t)+", przejazd ≤ "+fmtT(t.tmax)
-        +"<br>Dopłata "+fmt(t.reward)+"/mies. · kara "+fmt(t.penalty)+"/mies. · zostało "+monthsTxt(left)+reqHtml(t)+pmwHtml(t)+ctHoldHtml(t)+(()=>{const ok=lines.filter(l=>!l.owner&&lineContractInfo(l).prot.some(x=>x.t===t));const ng=lines.filter(l=>!l.owner).map(l=>({l,b:lineContractInfo(l).bad.find(x=>x.t===t)})).filter(x=>x.b);const rc=(t.req&&t.req.cat)||0;return "<br>Modelowy takt: "+contractModelTakt(t,rc)+" min ("+CATS[rc].code+") · "+(ng.length?"<span class='bad'>❌ nie liczą się: "+ng.map(x=>lineName(x.l)+" — "+x.b.why.join("; ")).join(" · ")+"</span> · ":"")+(ok.length?"realizują: "+ok.map(l=>lineName(l)+" (co "+l.takt+" min)").join(", "):"<span class='bad'>żadna Twoja linia nie realizuje kontraktu</span>");})()+(t.today.bad?"<br><span class='bad'>Kursy niezgodne z wymogami: "+t.today.bad+"</span>":"")
+        +"<br>Dopłata "+fmt(t.reward)+"/mies. · kara "+fmt(t.penalty)+"/mies. · zostało "+monthsTxt(left)+reqHtml(t)+pmwHtml(t)+ctHoldHtml(t)+ctBrdHtml(t)+(()=>{const ok=lines.filter(l=>!l.owner&&lineContractInfo(l).prot.some(x=>x.t===t));const ng=lines.filter(l=>!l.owner).map(l=>({l,b:lineContractInfo(l).bad.find(x=>x.t===t)})).filter(x=>x.b);const rc=(t.req&&t.req.cat)||0;return "<br>Modelowy takt: "+contractModelTakt(t,rc)+" min ("+CATS[rc].code+") · "+(ng.length?"<span class='bad'>❌ nie liczą się: "+ng.map(x=>lineName(x.l)+" — "+x.b.why.join("; ")).join(" · ")+"</span> · ":"")+(ok.length?"realizują: "+ok.map(l=>lineName(l)+" (co "+l.takt+" min)").join(", "):"<span class='bad'>żadna Twoja linia nie realizuje kontraktu</span>");})()+(t.today.bad?"<br><span class='bad'>Kursy niezgodne z wymogami: "+t.today.bad+"</span>":"")
         +(started?"":" · <span class='mid'>start "+dateTxt(t.start)+"</span>")
         +"<br>W tym miesiącu (doba próbna): <b class='"+(t.today.n>=t.trips?"good":"mid")+"'>"+t.today.n+"/"+t.trips+"</b>"
         +(t.today.slow?" · za wolnych: <span class='bad'>"+t.today.slow+"</span>":"")+(t.today.oh?" · poza godzinami: "+t.today.oh:"")
@@ -14288,7 +14329,7 @@ function renderTendersV5(body){
     const left=Math.max(0,Math.ceil((t.end-mins)/1440));
     h+=(inner?"<div>":"<div class='lnrow'><b>"+N[t.A].n+" – "+N[t.B].n+"</b> · <span style='color:"+(ownerCol(t.winner)||"var(--green)")+"'>"+ownerName(t.winner||0)+"</span>")
       +"<div class='st'>"+t.trips+" kursów/dobę · ≤ "+fmtT(t.tmax)+" · dopłata "+fmt(t.reward)+"/mies. · zostało "+monthsTxt(left)
-      +tenderReqHtml(t)+pmwHtml(t)+ctHoldHtml(t)+(t.newSeg?"<br><small style='color:var(--mut)'>🆕 Przetarg na nowo otwarty odcinek</small>":"")
+      +tenderReqHtml(t)+pmwHtml(t)+ctHoldHtml(t)+ctBrdHtml(t)+(t.newSeg?"<br><small style='color:var(--mut)'>🆕 Przetarg na nowo otwarty odcinek</small>":"")
       +"<br>W tym miesiącu: <b class='"+(t.today.n>=t.trips?"good":"mid")+"'>"+t.today.n+"/"+t.trips+"</b>"
       +(t.today.slow?" · <span class='bad'>za wolnych (przejazd > "+fmtT(t.tmax)+"): "+t.today.slow+"</span>":"")
       +(t.today.bad?" · <span class='bad'>niezgodnych z wymogami: "+t.today.bad+"</span>":"")
@@ -14341,7 +14382,7 @@ function renderTendersV5(body){
     const d=document.createElement("div");d.className="lnrow";
     d.innerHTML="<b>"+N[t.A].n+" – "+N[t.B].n+"</b><div class='st'>"+t.trips+" kursów/dobę w godz. "+tenderHoursTxt(t)
       +" · przejazd ≤ "+fmtT(t.tmax)+" · "+monthsTxt(t.days)+"<br>Maks. dopłata "+fmt(t.maxAmt??t.reward)+"/mies. · rozstrzygnięcie "+dateTxt(t.start)
-      +reqHtml(t)+pmwHtml(t)+ctHoldHtml(t)+ctLinkHtml(t)+(typeof wojOrgHtml==="function"?wojOrgHtml(t):"")+(t.newSeg?"<br><small style='color:var(--mut)'>🆕 Zarządca otworzył tu nowy odcinek, ale przez 2 miesiące nikt nie uruchomił przewozów</small>":"")+(t.plan&&!t.pmw?"<br><small style='color:var(--mut)'>🏗️ Zarządca zapowiada przed rozstrzygnięciem: "+(t.plan.cls?"modernizację trasy do "+TRACK_CLS[t.plan.cls].v+" km/h":"")+(t.plan.cls&&t.plan.el?" i ":"")+(t.plan.el?"elektryfikację":"")+"</small>":"")
+      +reqHtml(t)+pmwHtml(t)+ctHoldHtml(t)+ctBrdHtml(t)+ctLinkHtml(t)+(typeof wojOrgHtml==="function"?wojOrgHtml(t):"")+(t.newSeg?"<br><small style='color:var(--mut)'>🆕 Zarządca otworzył tu nowy odcinek, ale przez 2 miesiące nikt nie uruchomił przewozów</small>":"")+(t.plan&&!t.pmw?"<br><small style='color:var(--mut)'>🏗️ Zarządca zapowiada przed rozstrzygnięciem: "+(t.plan.cls?"modernizację trasy do "+TRACK_CLS[t.plan.cls].v+" km/h":"")+(t.plan.cls&&t.plan.el?" i ":"")+(t.plan.el?"elektryfikację":"")+"</small>":"")
       +(t.playerBid!=null?"<br>Twoja oferta: <b class='mid'>"+fmt(t.playerBid)+"/mies.</b>":"")+"</div>";
     if(isMgr()&&t.org===0){
       const bw=document.createElement("div");bw.className="btns";
@@ -14770,7 +14811,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.934";
+const GAME_VER="0.935";
 const CHANGELOG=[
  {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
