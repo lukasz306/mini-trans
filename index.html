@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.933</title>
+<title>Mini-trans by ŁL v0.934</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.933 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.934 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -6821,7 +6821,7 @@ function stressC(l,S){let C0=[];
 /* po rozbudowie w miejscu zatoru zapis zatoru znika (dane odświeżają się co miesiąc — bez tego ten sam zator blokowałby i kosztował wielokrotnie) */
 function jamClear(n,edges){if(n!=null){if(MGR.blk)delete MGR.blk[n];if(MGR.blkLast&&MGR.blkLast.st)delete MGR.blkLast.st[n];if(MGR.slotIss)delete MGR.slotIss[n];if(MGR.slotIssLast)delete MGR.slotIssLast[n];}
   for(const e of edges||[]){if(MGR.blkE)delete MGR.blkE[e];if(MGR.blkLast&&MGR.blkLast.ed)delete MGR.blkLast.ed[e];}}
-function secMaxed(x){return x.dbl&&!sblCheck(x).ok&&x.edges.every(e=>edgeCls(e)>=2)&&!quadCheck(x).ok;}
+function secMaxed(x){return x.dbl&&!sblCheck(x).ok&&x.edges.every(e=>edgeCls(e)>=2)&&!quadCheck(x,{cof:1}).ok;}
 function aiStressFix(f,l,S,want){
   if(!isOp()||!f||f.state!=="on"||f.crisis||!cofinEligible(f.id))return false;
   if(l.cofT!=null&&mins-l.cofT<30*DAY)return false;
@@ -6831,13 +6831,13 @@ function aiStressFix(f,l,S,want){
   const free=f.money-aiReserve(f)*(hasT(f,"safe")?1.5:1),lim=Math.min(free,gain*(hasT(f,"risk")||hasT(f,"expand")?30:24));
   if(lim<1000*k)return false;
   const C=stressC(l,S);
-  if(C.kind!=="st"&&C.xs.length&&C.xs.every(secMaxed))S.why2=" Odcinki na tej trasie są już rozbudowane do maksimum — dofinansowanie nic nie zmieni.";
+  if(C.kind!=="st"&&C.xs.length&&C.xs.every(secMaxed))S.why2=" Odcinków na tej trasie nie da się już rozbudować (także do 4 torów).";
   if(C.kind==="st"){const st=stations[C.node],add=Math.min(C.miss,MAX_EXTRA-st.extra),pay=Math.round(COST_LOOP*add*0.5*k);
     if(add>0&&pay<=lim&&capexOK(f,pay)){charge(f.id,pay,"capex");st.extra+=add;MGR.money-=Math.round(COST_LOOP*add*0.5*k);netChanged();l.cofT=mins;jamClear(C.node);
       mgrLog("🤝 Zarządca dobudowuje "+add+" tor. stacyjne w "+N[C.node].n+" (50% dopłaty: "+f.name+").");
       fLog(f,"🤝 "+f.name+" dopłaca "+fmt(pay)+" (50%) do torów stacyjnych w "+N[C.node].n+" — zatory blokowały zagęszczenie "+lineName(l)+" (prognoza +"+fmt(gain)+"/mies.).",true);return true;}}
   for(const x of C.xs.slice(0,6)){const m0=MGR.money;MGR.money=Math.max(m0,0)+lim*2;          /* zarządca wykłada drugą połowę; pierwszy odcinek, który da się rozbudować */
-    let fx=null;try{fx=mgrFixSection(x,lim*2);}finally{if(!fx)MGR.money=m0;}
+    let fx=null;try{fx=mgrFixSection(x,lim*2,{cof:1});}finally{if(!fx)MGR.money=m0;}
     if(fx){const pay=Math.round(fx.cost*0.5/100)*100;MGR.money=m0-(fx.cost-pay);
       charge(f.id,pay,"capex");l.cofT=mins;jamClear(null,x.edges);
       mgrLog("🤝 Zarządca: "+fx.txt+" (50% dopłaty: "+f.name+").");
@@ -6971,7 +6971,7 @@ function termTracksNeeded(i){
   return Math.ceil((occ+thru)/0.55)+1;
 }
 /* poprawa jednego odcinka: mijanka w połowie (jednotorowy, z przystankami po drodze) albo drugi tor */
-function mgrFixSection(x,budget){
+function mgrFixSection(x,budget,opt){
   const k=infC();
   if(x.dbl){                                           /* dwutorowy: gęstsza blokada (semafory), potem szybsze szlaki */
     let w=null,wb=0;for(const e of x.edges){const b=edgeBlk(e);if(b>wb){wb=b;w=e;}}
@@ -6983,7 +6983,7 @@ function mgrFixSection(x,budget){
     const es=x.edges.filter(e=>edgeCls(e)<2);
     if(es.length){const c=es.reduce((s,e)=>s+upgradeCost(e,2),0)*k;if(c<=budget){es.forEach(e=>setTrack(e,2));return {cost:c,txt:"modernizacja "+N[x.a].n+" – "+N[x.b].n+" do 160 km/h"};}}
     /* ostateczność: dwa dodatkowe tory (linia 4-torowa) — tylko krótkie, bardzo obciążone odcinki w aglomeracjach */
-    const Q=quadCheck(x);
+    const Q=quadCheck(x,opt);
     if(Q.ok&&Q.cost*k<=budget){x.edges.forEach(e=>EDGES[e].quad=true);netChanged();
       return {cost:Q.cost*k,txt:"dwa dodatkowe tory (linia 4-torowa) "+N[x.a].n+" – "+N[x.b].n};}
     return null;
@@ -7040,9 +7040,15 @@ function sblCheck(x){
   if(load<cap*(hp?0.25:0.6)){r.why="za mały ruch na SBL";return r;}   /* przy częstych korektach rozkładu (kolizje slotów) wystarczy umiarkowany ruch */
   r.ok=true;return r;
 }
-function quadCheck(x){
+/* v0.934: odcinek na trasie kontraktu, który traci kursy przez opóźnienia (lista odświeżana raz na minutę gry) */
+let QCT={t:-1,es:null};
+function onTroubledCt(x){if(typeof ctTroubled!=="function"||!isOp())return false;
+  if(QCT.t!==Math.floor(mins)){QCT={t:Math.floor(mins),es:new Set()};for(const c of ctTroubled())for(const e of routeEdges(c.p))QCT.es.add(e);}
+  return x.edges.some(e=>QCT.es.has(e));}
+function quadCheck(x,opt){
   const r={ok:false,why:"",cost:quadCost(x.edges)};
-  const hp=typeof pressOf==="function"&&pressOf(x)>=PRESS_HI;      /* częste korekty rozkładu — łagodniejsze warunki */
+  /* łagodniejszy próg (60%): częste korekty rozkładu, odcinek kontraktu z opóźnieniami albo rozbudowa dofinansowana przez przewoźnika */
+  const hp=(typeof pressOf==="function"&&pressOf(x)>=PRESS_HI)||!!(opt&&opt.cof)||onTroubledCt(x);
   if(!x.dbl){r.why="odcinek nie jest dwutorowy";return r;}
   if(x.quad){r.why="odcinek jest już czterotorowy";return r;}
   if(x.km>(hp?45:30)){r.why="za długi odcinek ("+Math.round(x.km)+" km, limit "+(hp?45:30)+" km między stacjami)";return r;}
@@ -7051,7 +7057,8 @@ function quadCheck(x){
   let load=secLoad(x);
   const cap=secCap(x),semMax=x.edges.every(semFull);
   r.load=load;r.cap=cap;
-  if(load<cap*(hp?0.6:0.85)){r.why="natężenie ruchu "+Math.round(load)+" kursów/dobę przy przepustowości ok. "+Math.round(cap)+" — budowa nieuzasadniona (wymagane ≥ "+(hp?60:85)+"% wykorzystania"+(hp?"":"; przy częstych korektach rozkładu ≥ 60%")+")";return r;}
+  const use=Math.max(load/Math.max(1,cap),x.u||0);r.use=use;           /* teoretyczne albo rzeczywiste obciążenie — większe z nich */
+  if(use<(hp?0.6:0.85)){r.why="wykorzystanie odcinka "+Math.round(use*100)+"% ("+Math.round(load)+" kursów/dobę, przepustowość ok. "+Math.round(cap)+") — budowa nieuzasadniona (wymagane ≥ "+(hp?60:85)+"%"+(hp?"":"; przy częstych korektach rozkładu, kontraktach z opóźnieniami albo dofinansowaniu ≥ 60%")+")";return r;}
   if(!semMax){r.why="najpierw zagęść blokadę (semafory) — to dużo tańsze";return r;}
   r.ok=true;return r;
 }
@@ -14763,7 +14770,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.933";
+const GAME_VER="0.934";
 const CHANGELOG=[
  {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
