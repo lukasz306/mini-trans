@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.936</title>
+<title>Mini-trans by ŁL v0.937</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.936 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.937 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -5069,13 +5069,16 @@ function acceptTender(t){
   v4News("✍️ Podpisano kontrakt "+N[t.A].n+" – "+N[t.B].n+" od "+dateTxt(t.start)+" ("+monthsTxt(t.days)+", pierwszy miesiąc bez kar).");
   return null;
 }
+/* v0.937: wymagana liczba kursów do zaliczenia — SKM i SKM/R z tolerancją 5% (zaokrąglenie w górę: 144 → 137) */
+function ctSkmTol(t){const r=t&&t.req;return !!(r&&(r.catSkm||r.catSR));}
+function ctTripsNeed(t){return ctSkmTol(t)?Math.ceil(t.trips*0.95):t.trips;}
 function tenderDay(dayStart){
   for(const t of V4.tenders){
     if(t.state==="offer"&&mins>=t.expires){t.state="expired";continue;}
     if(typeof ctBrdDay==="function"&&ctBrdDay(t,dayStart))continue;   /* v0.935: zamknięte przejście graniczne — umowa zawieszona */
     if(typeof ctHoldDay==="function"&&ctHoldDay(t,dayStart))continue;
     if(t.state!=="active"||dayStart<=t.start)continue;
-    const ok=t.today.n>=t.trips,dnum=Math.round((dayStart-t.start)/1440);
+    const ok=t.today.n>=ctTripsNeed(t),dnum=Math.round((dayStart-t.start)/1440);
     const grace=dnum<=1||(t.graceTo!=null&&dayStart<=t.graceTo);
     t.log.unshift({d:dnum,n:t.today.n,slow:t.today.slow,ok});if(t.today.ss)t.log[0].ss=t.today.ss;
     if(!grace)ctWarn(t,dnum);
@@ -5122,7 +5125,7 @@ function tenderDay(dayStart){
 /* v0.927: ostrzeżenie przewoźnika-gracza, gdy kursy przepadają z przyczyn po stronie linii (trasa za długa już w rozkładzie, wymogi) */
 function ctWarn(t,dnum){
   if((t.winner||0)!==0||t.org===0)return;
-  if((t.today.n||0)>=t.trips)return;                    /* v0.936: umowa wykonana — nie ma czego ostrzegać */
+  if((t.today.n||0)>=ctTripsNeed(t))return;                    /* v0.936: umowa wykonana — nie ma czego ostrzegać */
   const T=t.today,tt=T.tt||{},runs=(T.n||0)+(T.slow||0),msg=[];
   if(T.ss&&T.ss>=Math.max(2,runs*0.25)){
     const ls=Object.keys(tt).filter(id=>tt[id].ss).map(id=>{const l=lines.find(x=>x.id===+id);return (l?lineName(l):"L"+id)+": rozkładowo "+fmtT(tt[id].sch);});
@@ -7411,7 +7414,7 @@ function hhm(h,m){return String(((h%24)+24)%24).padStart(2,"0")+":"+String(m).pa
 function tenderHoursTxt(t){return t.h1===t.h2?"całą dobę":hhm(t.h1,0)+"–"+hhm(t.h2-1,59);}
 function tenderReqs(t){
   const o=["🕔 liczą się kursy z odjazdem w godz. "+tenderHoursTxt(t)+" (godzina odjazdu ze stacji początkowej relacji)",
-    "🔁 min. "+t.trips+" kursów/dobę "+N[t.A].n+" ↔ "+N[t.B].n+" (oba kierunki łącznie)",
+    "🔁 min. "+t.trips+" kursów/dobę "+N[t.A].n+" ↔ "+N[t.B].n+" (oba kierunki łącznie"+(ctSkmTol(t)?"; SKM: tolerancja 5% — zaliczone od "+ctTripsNeed(t):"")+")",
     "⏱️ przejazd "+N[t.A].n+" ↔ "+N[t.B].n+" ≤ "+fmtT(t.tmax)+" (+5 min tolerancji)"];
   return o.concat(reqList(t));
 }
@@ -7429,7 +7432,7 @@ function contractAgg(t){
     if(!I.prot.some(x=>x.t===t)&&!I.over.some(x=>x.t===t)&&!(I.spare||[]).some(x=>x.t===t))continue;
     const H=lineTenderHours(l,t);est+=H.est;L.push(l);for(let h=0;h<24;h++)if(hourIn(h,t.h1,t.h2)&&hourIn(h,l.h1,l.h2))hrs.add(h);}
   const miss=[];for(let h=0;h<24;h++)if(hourIn(h,t.h1,t.h2)&&!hrs.has(h))miss.push(h);
-  return {est,lines:L,miss,ok:est>=t.trips};
+  return {est,lines:L,miss,ok:est>=ctTripsNeed(t)};
 }
 function lineTenderHoursTxt(l,t,html){
   const H=lineTenderHours(l,t);const lh=(l.h1===l.h2?"całą dobę":hhm(l.h1,0)+"–"+hhm(l.h2,0));
@@ -7439,7 +7442,7 @@ function lineTenderHoursTxt(l,t,html){
     if(!A.ok)s=(html?"<span class='bad'>":"")+"⚠️ "+s+" — razem za mało: wydłuż godziny kursowania albo zagęść takt"+(html?"</span>":"");
     else{s+=" ✅";if(A.miss.length)s+=" · bez kursów w godz. kontraktu: "+hrRanges(A.miss);}
     return s;}
-  if(H.est<t.trips)s=(html?"<span class='bad'>":"")+"⚠️ "+s+" — za mało: wydłuż godziny kursowania albo zagęść takt"+(html?"</span>":"");
+  if(H.est<ctTripsNeed(t))s=(html?"<span class='bad'>":"")+"⚠️ "+s+" — za mało: wydłuż godziny kursowania albo zagęść takt"+(html?"</span>":"");
   else if(!H.full)s+=" · poza linią zostają godz. kontraktu: "+hrRanges(H.miss);
   return s;
 }
@@ -13670,7 +13673,7 @@ function renderMarket(){
         +t.trips+" kursów/dobę (obie strony) w godz. "+tenderHoursTxt(t)+", przejazd ≤ "+fmtT(t.tmax)
         +"<br>Dopłata "+fmt(t.reward)+"/mies. · kara "+fmt(t.penalty)+"/mies. · zostało "+monthsTxt(left)+reqHtml(t)+pmwHtml(t)+ctHoldHtml(t)+ctBrdHtml(t)+(()=>{const ok=lines.filter(l=>!l.owner&&lineContractInfo(l).prot.some(x=>x.t===t));const ng=lines.filter(l=>!l.owner).map(l=>({l,b:lineContractInfo(l).bad.find(x=>x.t===t)})).filter(x=>x.b);const rc=(t.req&&t.req.cat)||0;return "<br>Modelowy takt: "+contractModelTakt(t,rc)+" min ("+CATS[rc].code+") · "+(ng.length?"<span class='bad'>❌ nie liczą się: "+ng.map(x=>lineName(x.l)+" — "+x.b.why.join("; ")).join(" · ")+"</span> · ":"")+(ok.length?"realizują: "+ok.map(l=>lineName(l)+" (co "+l.takt+" min)").join(", "):"<span class='bad'>żadna Twoja linia nie realizuje kontraktu</span>");})()+(t.today.bad?"<br><span class='bad'>Kursy niezgodne z wymogami: "+t.today.bad+"</span>":"")
         +(started?"":" · <span class='mid'>start "+dateTxt(t.start)+"</span>")
-        +"<br>W tym miesiącu (doba próbna): <b class='"+(t.today.n>=t.trips?"good":"mid")+"'>"+t.today.n+"/"+t.trips+"</b>"
+        +"<br>W tym miesiącu (doba próbna): <b class='"+(t.today.n>=ctTripsNeed(t)?"good":"mid")+"'>"+t.today.n+"/"+t.trips+"</b>"
         +(t.today.slow?" · za wolnych: <span class='bad'>"+t.today.slow+"</span>":"")+(t.today.oh?" · poza godzinami: "+t.today.oh:"")
         +(t.today.tt?"<br><small>Przejazd (limit "+fmtT(t.tmax)+"): "+Object.keys(t.today.tt).map(id=>{const q=t.today.tt[id];return "L"+id+" śr. "+fmtT(q.sum/q.n)+", maks. "+fmtT(q.max);}).join(" · ")+"</small>":"")
         +(t.streak?" · <span class='bad'>miesiące bez wykonania z rzędu: "+t.streak+"/3</span>":"")
@@ -14031,6 +14034,7 @@ function stationBoard(i,kind){
       for(let g=0;g<200&&out.length<600;g++,s+=l.takt){
         const t=s+off;if(t>=d1)break;if(t<d0)continue;
         if(!hourIn(Math.floor(((s%1440)+1440)%1440/60),l.h1,l.h2))continue;
+        if(!skmSlotOn(l,s,ph))continue;                  /* v0.937: SKM poza szczytem — co drugi kurs (jak w ruchu) */
         /* kurs skrócony (koniec doby rozkładowej) */
         const sk=shortTurnIdx({model:m,owner:l.owner||0},l,r,i0,dir,s);
         if(sk===-1)continue;
@@ -14331,7 +14335,7 @@ function renderTendersV5(body){
     h+=(inner?"<div>":"<div class='lnrow'><b>"+N[t.A].n+" – "+N[t.B].n+"</b> · <span style='color:"+(ownerCol(t.winner)||"var(--green)")+"'>"+ownerName(t.winner||0)+"</span>")
       +"<div class='st'>"+t.trips+" kursów/dobę · ≤ "+fmtT(t.tmax)+" · dopłata "+fmt(t.reward)+"/mies. · zostało "+monthsTxt(left)
       +tenderReqHtml(t)+pmwHtml(t)+ctHoldHtml(t)+ctBrdHtml(t)+(t.newSeg?"<br><small style='color:var(--mut)'>🆕 Przetarg na nowo otwarty odcinek</small>":"")
-      +"<br>W tym miesiącu: <b class='"+(t.today.n>=t.trips?"good":"mid")+"'>"+t.today.n+"/"+t.trips+"</b>"
+      +"<br>W tym miesiącu: <b class='"+(t.today.n>=ctTripsNeed(t)?"good":"mid")+"'>"+t.today.n+"/"+t.trips+"</b>"
       +(t.today.slow?" · <span class='bad'>za wolnych (przejazd > "+fmtT(t.tmax)+"): "+t.today.slow+"</span>":"")
       +(t.today.bad?" · <span class='bad'>niezgodnych z wymogami: "+t.today.bad+"</span>":"")
       +(t.today.oh?" · <span class='mid'>poza godzinami "+tenderHoursTxt(t)+": "+t.today.oh+"</span>":"")
@@ -14369,7 +14373,7 @@ function renderTendersV5(body){
       const ids=[...new Set(oth.map(t=>t.winner||0))];
       ids.forEach(o=>{const L=oth.filter(t=>(t.winner||0)===o);
         h+="<div style='margin:6px 0 2px;font-weight:600;color:"+(ownerCol(o)||"var(--ink)")+"'>"+ownerName(o)+" <small style='color:var(--mut);font-weight:400'>("+L.length+")</small></div>";
-        L.forEach(t=>{const left=Math.max(0,Math.ceil((t.end-mins)/1440)),okM=t.today.n>=t.trips,last=t.log.length?(t.log[0].ok?"✅":t.log[0].fm===2?"⚖️":t.log[0].fm===1?"🟧":"❌"):"";
+        L.forEach(t=>{const left=Math.max(0,Math.ceil((t.end-mins)/1440)),okM=t.today.n>=ctTripsNeed(t),last=t.log.length?(t.log[0].ok?"✅":t.log[0].fm===2?"⚖️":t.log[0].fm===1?"🟧":"❌"):"";
           h+="<details class='lnrow' style='display:block'"+detAttr("ct"+t.id)+"><summary style='cursor:pointer'><b>"+N[t.A].n+" – "+N[t.B].n+"</b>"
             +"<span class='st'> · "+t.trips+" kursów/dobę · "+fmt(t.reward)+"/mies. · "+monthsTxt(left)+" · <b class='"+(okM?"good":"mid")+"'>"+t.today.n+"/"+t.trips+"</b>"+(last?" "+last:"")+(t.pmw?" · 🗺️ IC":"")+"</span></summary>"
             +ctCard(t,true)+"</details>";});
@@ -14812,7 +14816,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.936";
+const GAME_VER="0.937";
 const CHANGELOG=[
  {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
