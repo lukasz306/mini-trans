@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.926</title>
+<title>Mini-trans by ŁL v0.93</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.926 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.93 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -4785,8 +4785,10 @@ function runArrive(tr,idx){
     const other=node===t.A?t.B:t.A,dp=R.dep[other];
     if(dp==null)continue;
     if(!hourIn(Math.floor(dp/60)%24,t.h1,t.h2)){t.today.oh=(t.today.oh||0)+1;continue;}
-    if(!reqRunOK(t,tr)){t.today.bad=(t.today.bad||0)+1;continue;}   /* kurs niezgodny z wymogami kontraktu */
-    {const tt=t.today.tt||(t.today.tt={}),q=tt[R.line]||(tt[R.line]={n:0,sum:0,max:0,slow:0});const d=mins-dp;q.n++;q.sum+=d;q.max=Math.max(q.max,d);if(d>t.tmax+5)q.slow++;}   /* czasy przejazdu A→B wg linii (diagnostyka) */
+    if(!reqRunOK(t,tr)){t.today.bad=(t.today.bad||0)+1;const w=reqRunWhy(t,tr);if(w){const bw=t.today.bw||(t.today.bw={});bw[w]=(bw[w]||0)+1;}continue;}   /* kurs niezgodny z wymogami kontraktu */
+    {const tt=t.today.tt||(t.today.tt={}),q=tt[R.line]||(tt[R.line]={n:0,sum:0,max:0,slow:0});const d=mins-dp;q.n++;q.sum+=d;q.max=Math.max(q.max,d);if(d>t.tmax+5)q.slow++;
+      /* v0.927: czas A→B już w rozkładzie (np. przez zajazdy) — takiego kursu infrastruktura nie przyspieszy */
+      const sc=runSchedAB(tr,idx,other);if(sc!=null){q.sch=Math.max(q.sch||0,sc);if(sc>t.tmax+5){q.ss=(q.ss||0)+1;if(d>t.tmax+5)t.today.ss=(t.today.ss||0)+1;}}}   /* czasy przejazdu A→B wg linii (diagnostyka) */
     if(mins-dp<=t.tmax+5)t.today.n++;else t.today.slow++;
   }
   const end=(idx===0||idx===tr.route.length-1)&&idx!==R.i0;
@@ -4801,6 +4803,10 @@ function runArrive(tr,idx){
   }
 }
 function runDepart(tr,node){if(tr.run)tr.run.dep[node]=mins;}
+/* rozkładowy czas przejazdu od ostatniego odjazdu z węzła other do bieżącego węzła (kurs może jechać po trasie wstecz) */
+function runSchedAB(tr,idx,other){const R=tr.run,r=tr.route;if(!R||!r)return null;const st=tr.step<0?1:-1;
+  for(let j=idx+st;j>=0&&j<r.length;j+=st)if(r[j]===other){const a=R.off[idx],b=R.off[j];return a!=null&&b!=null?Math.abs(a-b):null;}
+  return null;}
 /* --- częstotliwość i czasy z rozkładów (do konkurencji i wzrostu miast) --- */
 let freqCache=null;
 /* liczba składów na linii — mapa odświeżana co minutę gry lub po zmianie liczby pociągów */
@@ -4973,13 +4979,28 @@ function citySeat(i){const k=cityKey(i);if(k==null)return null;
   return CSEAT[k]??null;}
 function evDistrict(i){const s=citySeat(i);return s!=null?s!==i:isDistrict(i);}
 function cityNodes(c){if(citySeat(c)!==c)return null;const k=cityKey(c),L=N.map((n,i)=>i).filter(i=>cityKey(i)===k&&!hiddenNode(i));return L.length>1?{L,name:k}:null;}
+/* v0.927: duble przetargów — stacje jednego miasta (np. Warszawa Wileńska / Centralna) to jedno miasto,
+   a przetarg nie jest ogłaszany, gdy jego trasa w ≥ 50% km biegnie po trasie trwającego przetargu lub kontraktu */
+function tenderTown(i){const k=cityKey(i);return k!=null?"c"+k:"n"+i;}
+function tenderSamePair(t,a,b){const x=tenderTown(t.A),y=tenderTown(t.B),u=tenderTown(a),v=tenderTown(b);return (x===u&&y===v)||(x===v&&y===u);}
+function tenderLive(t){return t.state==="offer"||t.state==="active";}
+function tenderDup(a,b,p,skip){
+  const live=V4.tenders.filter(t=>tenderLive(t)&&t!==skip&&t.id!==(skip&&skip.id));
+  const same=live.find(t=>tenderSamePair(t,a,b));if(same)return same;
+  p=p||pathBetween(a,b);if(!p||p.length<2)return null;
+  const es=routeEdges(p),km=es.reduce((s,e)=>s+EDGES[e].km,0);if(!(km>0))return null;
+  for(const t of live){let q;try{q=tenderPath(t);}catch(e){q=null;}if(!q||q.length<2)continue;
+    const S=new Set(routeEdges(q));let c=0;for(const e of es)if(S.has(e))c+=EDGES[e].km;
+    if(c>=km*0.5)return t;}
+  return null;
+}
 function tenderCandidates(){
   const big=N.map((n,i)=>i).filter(i=>N[i].p>=4000&&!isDistrict(i)&&!hiddenNode(i));
   const out=[];
   for(const a of big)for(const b of big){
     if(a>=b)continue;const km=geoKm(a,b);
     if(km<20||km>170)continue;
-    if(V4.tenders.some(t=>(t.state==="offer"||t.state==="active")&&((t.A===a&&t.B===b)||(t.A===b&&t.B===a))))continue;
+    if(tenderTown(a)===tenderTown(b)||V4.tenders.some(t=>tenderLive(t)&&tenderSamePair(t,a,b)))continue;
     out.push({a,b,w:DW[a][b]+DW[b][a],km});
   }
   return out;
@@ -4997,10 +5018,16 @@ function makeTender(builtOnly,pre,force){
   if(force)c=[{a:force.A,b:force.B,w:1,km:geoKm(force.A,force.B)}];
   if(builtOnly)c=c.filter(x=>stations[x.a].built&&stations[x.b].built&&pathBuilt(x.a,x.b));
   if(!c.length)return null;
-  let tot=0;for(const x of c)tot+=x.w;
-  let r=Math.random()*tot,ch=c[0];for(const x of c){r-=x.w;if(r<=0){ch=x;break;}}
+  let ch=null,p=null;
+  for(let tries=0;tries<12&&c.length;tries++){
+    let tot=0;for(const x of c)tot+=x.w;
+    let r=Math.random()*tot,x0=c[0];for(const x of c){r-=x.w;if(r<=0){x0=x;break;}}
+    const q=dijkstra(x0.a,x0.b,false)||[x0.a,x0.b];
+    if(!tenderDup(x0.a,x0.b,q)){ch=x0;p=q;break;}
+    c=c.filter(x=>x!==x0);
+  }
+  if(!ch)return null;                                      /* v0.927: tylko duble — przetargu nie ogłaszamy */
   const {a,b,km}=ch;
-  const p=dijkstra(a,b,false)||[a,b];
   const tmax=tenderTmax(p);
   const pops=Math.sqrt(N[a].p*N[b].p);
   const trips=Math.max(6,Math.min(24,2*Math.round(pops/2500)));
@@ -5049,7 +5076,8 @@ function tenderDay(dayStart){
     if(t.state!=="active"||dayStart<=t.start)continue;
     const ok=t.today.n>=t.trips,dnum=Math.round((dayStart-t.start)/1440);
     const grace=dnum<=1;
-    t.log.unshift({d:dnum,n:t.today.n,slow:t.today.slow,ok});
+    t.log.unshift({d:dnum,n:t.today.n,slow:t.today.slow,ok});if(t.today.ss)t.log[0].ss=t.today.ss;
+    if(!grace)ctWarn(t,dnum);
     if(t.log.length>40)t.log.pop();
     const mine=(t.winner||0)===0||t.org===0;           /* gracz jest stroną umowy */
     if(typeof goalContractMonth==="function")goalContractMonth(t,ok,grace);
@@ -5089,6 +5117,20 @@ function tenderDay(dayStart){
       if(mine)v4Pop({icon:"🏅",t:"Kontrakt wykonany",k:"C",text:"Umowa "+N[t.A].n+" – "+N[t.B].n+" dobiegła końca. Dni z pełnym wykonaniem: "
         +t.okDays+" z "+t.days+".",lines:["Dopłaty łącznie: "+fmt(t.okDays*t.reward)]});}
   }
+}
+/* v0.927: ostrzeżenie przewoźnika-gracza, gdy kursy przepadają z przyczyn po stronie linii (trasa za długa już w rozkładzie, wymogi) */
+function ctWarn(t,dnum){
+  if((t.winner||0)!==0||t.org===0)return;
+  const T=t.today,tt=T.tt||{},runs=(T.n||0)+(T.slow||0),msg=[];
+  if(T.ss&&T.ss>=Math.max(2,runs*0.25)){
+    const ls=Object.keys(tt).filter(id=>tt[id].ss).map(id=>{const l=lines.find(x=>x.id===+id);return (l?lineName(l):"L"+id)+": rozkładowo "+fmtT(tt[id].sch);});
+    msg.push("Za wolne już w rozkładzie: "+T.ss+" kursów (norma "+fmtT(t.tmax)+") — "+ls.join("; ")+".");
+    msg.push("Trasa linii (zajazdy, objazd, postoje) jest dłuższa, niż pozwala umowa — rozbudowa torów tego nie naprawi. Uruchom osobną linię "+N[t.A].n+" – "+N[t.B].n+" albo skróć trasę.");}
+  if(T.bad&&T.bw)msg.push("Kursy niezaliczone przez wymogi umowy: "+Object.entries(T.bw).sort((a,b)=>b[1]-a[1]).map(([w,c])=>w+" ("+c+")").join(", ")+".");
+  if(!msg.length)return;
+  if(t.warnAt!=null&&dnum-t.warnAt<6)return;t.warnAt=dnum;
+  v4Pop({icon:"⚠️",t:"Umowa "+N[t.A].n+" – "+N[t.B].n+": problem po stronie linii",k:"D",
+    text:"Zaliczono "+(T.n||0)+"/"+t.trips+" kursów. Część kursów przepada z przyczyn, które leżą w ustawieniach Twoich linii, a nie w infrastrukturze zarządcy.",lines:msg});
 }
 /* --- rozwój miast --- */
 function growTowns(){const g=growTownsGen();while(!g.next().done);}
@@ -6527,15 +6569,20 @@ function* mgrMonthGen(){
   let budget=Math.max(0,(MGR.money-reserve)*0.6);
   const spend=c=>{if(c>budget)return false;budget-=c;MGR.money-=c;return true;};
   const rep={loop:[],dbl:[],term:[],up:{n:0,km:0,v:0},el:{n:0,km:0}};
+  /* 0) v0.927: kontrakty, którym przepadają kursy przez opóźnienia — wąskie gardła na ich trasach przed wszystkim innym;
+     dopóki są takie kontrakty, zarządca nie otwiera nowych odcinków */
+  budget-=mgrContracts(Math.max(budget,MGR.money-30000*k));
+  budget=Math.max(0,Math.min(budget,MGR.money-reserve));
+  yield;
   /* 0a) nowy odcinek co najmniej raz na 3 miesiące — pieniądze na niego odkładane są przed wszystkim innym */
   if(MGR.lastNew==null)MGR.lastNew=mins-3*1440;          /* zapis sprzed v0.55: od razu termin na nowy odcinek */
   let bestNew;const getNew=()=>bestNew!==undefined?bestNew:(bestNew=mgrBestNew()||mgrBestNew(1500));
-  if(mins-MGR.lastNew>=3*1440-60&&!MGR.diagHold&&!MGR.pressHold){                    /* pilna pozycja diagnostyki — nowy odcinek poczeka */
+  if(mins-MGR.lastNew>=3*1440-60&&!MGR.diagHold&&!MGR.pressHold&&!MGR.ctHold){                    /* pilna pozycja diagnostyki — nowy odcinek poczeka */
     const best=getNew();
     if(best&&best.c*k<=MGR.money-40000*k){const c=mgrOpenNew(best);budget=Math.max(0,Math.min(budget-c,(MGR.money-reserve)*0.6));}
     else if(best)mgrLog("💰 Zarządca odkłada środki na nowy odcinek do "+N[best.t].n+" (potrzeba ok. "+fmt(best.c*k)+").");
   }
-  const saving=!MGR.diagHold&&!MGR.pressHold&&mins-MGR.lastNew>=2*1440?(()=>{const b=getNew();return b?b.c*k:0;})():0;
+  const saving=!MGR.diagHold&&!MGR.pressHold&&!MGR.ctHold&&mins-MGR.lastNew>=2*1440?(()=>{const b=getNew();return b?b.c*k:0;})():0;
   if(saving)budget=Math.max(0,Math.min(budget,MGR.money-saving-reserve));   /* miesiąc przed terminem: nie przejadamy odłożonych pieniędzy */
   /* 0b) diagnostyka ruchu (jak w zakładce Ruch → Diagnostyka i w Planerze) — zaraz po zatorach, z pełnego budżetu */
   budget-=mgrDoDiag(Math.max(budget,Math.min(MGR.money-reserve*0.5,(MGR.money-reserve*0.5)*0.8)));
@@ -6610,7 +6657,7 @@ function* mgrMonthGen(){
   yield;
   const tight=sectionList().some(x=>!x.dbl&&x.u>=0.7);
   for(let nb=0;nb<(MGR.money>700000*k?2:1);nb++){
-    if(tight||MGR.diagHold||MGR.pressHold||MGR.money<=250000*k)break;
+    if(tight||MGR.diagHold||MGR.pressHold||MGR.ctHold||MGR.money<=250000*k)break;
     const best=mgrBestNew();
     if(best&&best.c*k*1.3<MGR.money-150000*k)mgrOpenNew(best);
   }
@@ -6729,6 +6776,34 @@ function spanMid(p){
     if(isPassing(n)||hiddenNode(n))continue;const d=Math.abs(acc-tot/2)+(stations[n].built?0:2);
     if(acc<tot*0.2||acc>tot*0.8)continue;if(d<bd){bd=d;best=n;}}
   return best;
+}
+/* v0.927: kontrakty z kursami „za wolnymi” przez opóźnienia (bez kursów za wolnych już w rozkładzie) z ostatnich 3 miesięcy */
+function ctTroubled(){
+  const out=[];
+  for(const t of V4.tenders){if(t.state!=="active"||mins<t.start)continue;
+    const L=(t.log||[]).slice(0,3);if(!L.length)continue;
+    let slow=0,tot=0;for(const g of L){slow+=Math.max(0,(g.slow||0)-(g.ss||0));tot+=(g.n||0)+(g.slow||0);}
+    if(tot<4||slow<tot*0.2)continue;
+    let p=null;try{p=tenderPath(t);}catch(e){}if(!p||p.length<2)continue;
+    out.push({t,share:slow/tot,p});}
+  return out.sort((a,b)=>b.share-a.share);
+}
+function mgrContracts(budget){
+  const T=ctTroubled();MGR.ctHold=T.length?{n:T.length,t:mins}:null;if(!T.length)return 0;
+  const k=infC(),nodes=new Set(),edges=new Set(),out=[];let used=0,n=0;
+  for(const x of T){for(const v of x.p)nodes.add(v);for(const e of routeEdges(x.p))edges.add(e);}
+  /* zatory na trasach kontraktów (tory stacyjne i szlaki), potem najbardziej obciążone odcinki */
+  for(const j of jamList()){if(n>=4)break;
+    if(j.kind==="xtrack"&&nodes.has(j.n)){const st=stations[j.n];if(!st.built||st.extra>=MAX_EXTRA||used+COST_LOOP*k>budget)continue;
+      used+=COST_LOOP*k;MGR.money-=COST_LOOP*k;st.extra++;netChanged();n++;out.push("tor dodatkowy w "+N[j.n].n+" ("+Math.round(j.v)+" min czekania)");}
+    else if(j.kind==="sec"&&edges.has(j.e)){const x=sectionList().find(z=>z.edges.indexOf(j.e)>=0);if(!x)continue;
+      const fx=mgrFixSection(x,budget-used);if(fx){used+=fx.cost;MGR.money-=fx.cost;n++;out.push(fx.txt);}}}
+  for(const x of sectionList()){if(n>=4||x.u<0.45)break;if(!x.edges.some(e=>edges.has(e)))continue;
+    const fx=mgrFixSection(x,budget-used);if(fx){used+=fx.cost;MGR.money-=fx.cost;n++;out.push(fx.txt);}}
+  const names=T.slice(0,3).map(x=>N[x.t.A].n+" – "+N[x.t.B].n).join(", ");
+  if(out.length)mgrLog("📜 Zarządca usuwa wąskie gardła na trasach kontraktów z opóźnieniami ("+names+"): "+out.join(", ")+".");
+  else if(!MGR.ctLogT||mins-MGR.ctLogT>=3*1440){MGR.ctLogT=mins;mgrLog("📜 Kontrakty z opóźnieniami ("+names+") — zarządca wstrzymuje nowe odcinki i odkłada środki na ich trasy.");}
+  return used;
 }
 function mgrDoDiag(budget){
   const k=infC();let used=0;const out=[];let hold=null;
@@ -7035,7 +7110,7 @@ function mgrTenderPlan(R){
   if(MGR.ready){const r=MGR.ready;if(!hiddenNode(r.A)&&!hiddenNode(r.B))C.unshift({a:r.A,b:r.B,w:9,ready:1});MGR.ready=null;}
   const out=[],k=infC();
   for(const c of C){if(used.has(Math.min(c.a,c.b)*4096+Math.max(c.a,c.b)))continue;
-    const p=pathBetween(c.a,c.b);if(!p||p.length<2)continue;const km=routeKm(p);
+    const p=pathBetween(c.a,c.b);if(!p||p.length<2)continue;if(tenderDup(c.a,c.b,p))continue;const km=routeKm(p);
     let feeKm=0;for(const e of routeEdges(p))feeKm+=accessFee(edgeCls(e))*EDGES[e].km;feeKm/=Math.max(1,km);
     const base=Math.max(6,Math.min(24,2*Math.round(Math.sqrt(N[c.a].p*N[c.b].p)/2500)));
     let best=null;
@@ -7350,20 +7425,22 @@ let LSP={m:-1,c:new Map()};
 function lineSpareOK(l){const m=Math.floor(mins/60);if(LSP.m!==m)LSP={m,c:new Map()};let v=LSP.c.get(l.id);if(v!=null)return v;
   const r=lineRoute(l),need=l.takt>0?Math.ceil(2*(lineTimeP(r,l.model,l.cat||0,catSel(l.cat)?l.stops:null)+TURN)/l.takt):0;v=trains.filter(t=>t.line===l.id).length>=need+1;LSP.c.set(l.id,v);return v;}
 /* czy kurs pociągu spełnia wymogi kontraktu (tabor, kategoria, takt, cena) */
-function reqRunOK(t,tr){
-  const r=t.req;if(!r)return true;
-  if(!reqModelOK(r,tr.model))return false;
+function reqRunOK(t,tr){return !t.req||!reqRunWhy(t,tr);}
+/* pierwszy niespełniony wymóg kontraktu dla kursu (null = kurs zgodny) */
+function reqRunWhy(t,tr){
+  const r=t.req;if(!r)return null;
+  if(!reqModelOK(r,tr.model))return "tabor niezgodny z wymogami";
   const l=lineOf(tr);
-  if(r.cat&&(!l||catRank(l.cat||0)<r.cat))return false;
-  if(r.catR&&l&&(l.cat||0)!==0)return false;
-  if(r.catSkm&&(!l||!catSkm(l.cat)))return false;
-  if(r.catSR&&l&&!catSkm(l.cat)&&(l.cat||0)!==0)return false;
-  if(r.via&&(!l||reqViaMiss(r,l).length))return false;
-  if(r.takt&&!ctTaktOK(t,l))return false;
-  if(r.fareMax&&l&&lineFare(l)>r.fareMax+1e-6)return false;
-  if(r.noShort&&l&&l.shortTurns!==false)return false;
-  if(r.spare&&l&&!lineSpareOK(l))return false;
-  return true;
+  if(r.cat&&(!l||catRank(l.cat||0)<r.cat))return "za niska kategoria linii";
+  if(r.catR&&l&&(l.cat||0)!==0)return "wymagana kategoria R";
+  if(r.catSkm&&(!l||!catSkm(l.cat)))return "wymagana kategoria SKM";
+  if(r.catSR&&l&&!catSkm(l.cat)&&(l.cat||0)!==0)return "wymagana kategoria SKM lub R";
+  if(r.via&&(!l||reqViaMiss(r,l).length))return "linia nie przejeżdża przez wymagane stacje";
+  if(r.takt&&!ctTaktOK(t,l))return "takt linii ("+(l&&l.takt>0?l.takt+" min":"brak")+") rzadszy niż wymagany ("+r.takt+" min)";
+  if(r.fareMax&&l&&lineFare(l)>r.fareMax+1e-6)return "cena biletu powyżej limitu";
+  if(r.noShort&&l&&l.shortTurns!==false)return "linia ma krótkie zawracanie (wymóg: bez)";
+  if(r.spare&&l&&!lineSpareOK(l))return "brak składu rezerwowego";
+  return null;
 }
 function reqViaMiss(r,l){if(!r||!r.via||!r.via.length)return [];const rr=lineRoute(l);return r.via.filter(v=>rr.indexOf(v)<0);}
 function reqMerge(list){const o={};for(const r of list){if(!r)continue;for(const k in r){if(k==="via"){o.via=[...new Set([...(o.via||[]),...r.via])];continue;}if(k==="fareMax"||k==="takt")o[k]=o[k]?Math.min(o[k],r[k]):r[k];else o[k]=Math.max(o[k]||0,r[k]===true?1:r[k]);}}return o;}
@@ -8683,7 +8760,7 @@ function pmwInfraNeed(p,req){
 }
 function pmwCandidates(){
   const SI=serviceInfo(),out=[],F=classFocus();
-  const busy=(a,b)=>V4.tenders.some(t=>(t.state==="offer"||t.state==="active")&&((t.A===a&&t.B===b)||(t.A===b&&t.B===a)));
+  const busy=(a,b)=>V4.tenders.some(t=>tenderLive(t)&&tenderSamePair(t,a,b));
   const recent=new Set((GAME.pmwHist||[]).slice(-4).map(x=>Math.min(x.A,x.B)*1000+Math.max(x.A,x.B)));
   const big=N.map((n,i)=>i).filter(i=>N[i].p>=15000&&!isDistrict(i)&&!hiddenNode(i));
   for(const a of big)for(const b of big){if(a>=b)continue;
@@ -8712,7 +8789,7 @@ function pmwPick(c){if(!c.length)return null;
   const w=c.map(x=>(x.cross?1:0.4)*(x.type==="event"?1.5:1)*Math.pow(0.3,hit(x.a)+hit(x.b)));
   let r=Math.random()*w.reduce((s,v)=>s+v,0);for(let i=0;i<c.length;i++){r-=w[i];if(r<=0)return c[i];}return c[c.length-1];}
 function pmwAnnounce(force){
-  const c=force||pmwPick(pmwCandidates());if(!c)return null;
+  const c=force||pmwPick(pmwCandidates().filter(x=>!tenderDup(x.a,x.b,x.p)));if(!c)return null;
   const {a,b,p,km,type}=c,mag=type==="maglev";
   const hrs=17,trips=type==="long"?12:type==="event"?14:16;
   const req=mag?Object.assign({cat:2,vmin:500},N[a].woj!==N[b].woj?{inter:1}:{}):{inter:1,cat:1,vmin:160};
@@ -9207,7 +9284,7 @@ function wojTenderTick(){
   const rp=S.repair&&S.repair.y===gameYear(mins)?S.repair.w:null;let w=rp&&ws.indexOf(rp)>=0&&Math.random()<0.5?rp:ws[0];
   if(S.urgent&&S.urgent.until>mins&&ws.indexOf(S.urgent.w)>=0)w=S.urgent.w;                 /* przetarg interwencyjny po spadku zadowolenia */   /* program naprawczy: częściej najsłabsze */
   let cand=tenderCandidates().filter(x=>(N[x.a].woj===w||N[x.b].woj===w)&&stations[x.a].built&&stations[x.b].built&&pathBuilt(x.a,x.b)
-    &&!V4.tenders.some(q=>(q.state==="offer"||q.state==="active")&&((q.A===x.a&&q.B===x.b)||(q.A===x.b&&q.B===x.a))));
+    &&!V4.tenders.some(q=>tenderLive(q)&&tenderSamePair(q,x.a,x.b)));
   if(!cand.length)return;
   let tot=0;for(const x of cand)tot+=x.w;let r=Math.random()*tot,ch=cand[0];for(const x of cand){r-=x.w;if(r<=0){ch=x;break;}}
   const D0=woDetour(ch.a,ch.b);if(D0&&!woDetourOK(D0))return;
@@ -14609,8 +14686,9 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.926";
+const GAME_VER="0.93";
 const CHANGELOG=[
+ {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
  {v:"0.91",d:"październik 2026",c:["Przetargi na SKM albo SKM/R z wymaganym taktem.","Przetargi z wymaganą trasą (stacje pośrednie)."]},
  {v:"0.9",d:"październik 2026",c:["Nowe kategorie: MgLv (maglev, tylko po torze magnetycznym) i SKM (aglomeracje, takt od 5 min).","Takty od 30 min we wszystkich kategoriach regionalnych i dalekobieżnych."]},
