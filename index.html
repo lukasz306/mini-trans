@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.94</title>
+<title>Mini-trans by ŁL v0.941</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.94 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.941 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -2538,7 +2538,9 @@ function dailySlots(deep){if(deep)SLOT_DEEP=true;jobAdd("slots",dailySlotsGen);}
 function dailySlotsNow(){const g=dailySlotsGen();while(!g.next().done);}
 /* Niezależna kontrola rozkładu (tak jak liczy tablica): na stacjach wspólnych dla linii szukamy odjazdów
    różnych linii w tym samym kierunku w odstępie < 5 min. Zwraca listę kolizji. */
-function confLim(a,b){const e=edgeId(a,b);const E=e!=null?EDGES[e]:null;return E&&E.sbl&&E.tracks===2?2.5:5;}   /* SBL: kolizja dopiero poniżej 2,5 min */
+function confLim(a,b){const e=edgeId(a,b);const E=e!=null?EDGES[e]:null;return E&&E.sbl&&(E.tracks===2||E.quad)?2:5;}   /* v0.941: SBL — po każdym torze pociąg co 2 min */
+function confQuad(a,b){const e=edgeId(a,b);return e!=null&&!!EDGES[e].quad;}   /* 4 tory: dwa składy jednego kierunku jednocześnie */
+function cycD(t1,k1,t2,k2){const G=gcd(Math.round(k1),Math.round(k2));if(G<15)return Infinity;let d=Math.abs(t1-t2)%G;return Math.min(d,G-d);}
 function scheduleConflicts(){
   const act=lines.filter(l=>l.takt>0);const ev=new Map();
   for(const l of act){
@@ -2549,14 +2551,15 @@ function scheduleConflicts(){
       const ph=(PH.map[l.id]||0)+(r[i0]===l.B&&l.A!==l.B?(PH.tb[l.id]||0)+(PH.w[l.id]||0):0);
       for(let k=i0;k!==iE;k+=dir){const n=r[k];if(!stations[n].built)continue;
         const t=((ph+(k===i0?0:(o[k]??0)+1))%l.takt+l.takt)%l.takt;
-        const key=(magLine(l)?"m":catSkm(l.cat)&&skmLane(n,r[k+dir])?"s":"")+n+">"+r[k+dir];if(!ev.has(key))ev.set(key,[]);ev.get(key).push({id:l.id,t,takt:l.takt,n,lim:confLim(n,r[k+dir])});}
+        const key=(magLine(l)?"m":"")+n+">"+r[k+dir];if(!ev.has(key))ev.set(key,[]);ev.get(key).push({id:l.id,t,takt:l.takt,n,lim:confLim(n,r[k+dir]),q:confQuad(n,r[k+dir])});}
     }
   }
   const out=[];
   ev.forEach((arr,key)=>{
     for(let a=0;a<arr.length;a++)for(let b=a+1;b<arr.length;b++){const x=arr[a],y=arr[b];if(x.id===y.id)continue;
-      const G=gcd(Math.round(x.takt),Math.round(y.takt));if(G<15)continue;
-      let d=Math.abs(x.t-y.t)%G;d=Math.min(d,G-d);if(d<(x.lim||5))out.push({a:x.id,b:y.id,gap:d,node:x.n});}
+      const d=cycD(x.t,x.takt,y.t,y.takt),L=x.lim||5;if(!(d<L))continue;
+      if(x.q&&!arr.some(z=>z.id!==x.id&&z.id!==y.id&&cycD(z.t,z.takt,x.t,x.takt)<L&&cycD(z.t,z.takt,y.t,y.takt)<L))continue;   /* 4 tory: kolizja dopiero przy trzecim składzie */
+      out.push({a:x.id,b:y.id,gap:d,node:x.n});}
   });
   return out;
 }
@@ -2566,7 +2569,7 @@ function confCtx(){const ev=new Map();
     for(const dir of [1,-1]){const i0=dir>0?0:r.length-1,iE=dir>0?r.length-1:0,o=planOffsets(r,i0,dir,m,l.cat,S);
       const ph=(PH.map[l.id]||0)+(r[i0]===l.B&&l.A!==l.B?(PH.tb[l.id]||0)+(PH.w[l.id]||0):0);
       for(let k=i0;k!==iE;k+=dir){const n=r[k];if(!stations[n].built)continue;const t=((ph+(k===i0?0:(o[k]??0)+1))%l.takt+l.takt)%l.takt;
-        const key=(magLine(l)?"m":catSkm(l.cat)&&skmLane(n,r[k+dir])?"s":"")+n+">"+r[k+dir];let a=ev.get(key);if(!a){a=[];ev.set(key,a);}a.push({id:l.id,t,takt:l.takt,n,lim:confLim(n,r[k+dir])});}}}
+        const key=(magLine(l)?"m":"")+n+">"+r[k+dir];let a=ev.get(key);if(!a){a=[];ev.set(key,a);}a.push({id:l.id,t,takt:l.takt,n,lim:confLim(n,r[k+dir]),q:confQuad(n,r[k+dir])});}}}
   return {ev,off:new Map()};}
 function lineConf(ctx,l,ph,takt){
   const r=lineRoute(l);if(!r||r.length<2)return [];const m=MODELS[l.model]||MODELS[0],S=catSel(l.cat)?(l.stops||[]):null,out=[];
@@ -2575,7 +2578,9 @@ function lineConf(ctx,l,ph,takt){
     const p0=ph+(r[i0]===l.B&&l.A!==l.B?TB:0);
     for(let k=i0;k!==iE;k+=dir){const n=r[k];if(!stations[n].built)continue;const t=((p0+(k===i0?0:(o[k]??0)+1))%takt+takt)%takt;
       const a=ctx.ev.get((magLine(l)?"m":"")+n+">"+r[k+dir]);if(!a)continue;
-      for(const y of a){if(y.id===l.id)continue;const G=gcd(Math.round(takt),Math.round(y.takt));if(G<15)continue;let d=Math.abs(t-y.t)%G;d=Math.min(d,G-d);if(d<(y.lim||5))out.push({o:y.id,node:n,gap:d});}}}
+      for(const y of a){if(y.id===l.id)continue;const d=cycD(t,takt,y.t,y.takt),L=y.lim||5;if(!(d<L))continue;
+        if(y.q&&!a.some(z=>z.id!==l.id&&z.id!==y.id&&cycD(z.t,z.takt,t,takt)<L&&cycD(z.t,z.takt,y.t,y.takt)<L))continue;   /* 4 tory: dwa składy jednego kierunku jednocześnie */
+        out.push({o:y.id,node:n,gap:d});}}}
   return out;}
 /* ostatnia deska ratunku: przesuwamy fazę jednej z kolidujących linii o pół taktu i sprawdzamy, czy jest lepiej */
 function fixConflicts(){const g=fixConflictsGen();let r;while(!(r=g.next()).done);return r.value;}
@@ -14847,7 +14852,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.94";
+const GAME_VER="0.941";
 const CHANGELOG=[
  {v:"0.94",d:"październik 2026",c:["Pasażerowie jadą pociągiem z zajazdem; gdy obok jeździ linia bez zajazdu, część z nich (zależnie od grupy) woli na nią poczekać.","Zawieszanie kontraktów przez zamknięte przejście graniczne; propozycje dofinansowania rozbudowy przy ograniczeniach przepustowości.","SKM: tolerancja 5% liczby kursów w kontraktach."]},
  {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
@@ -15125,9 +15130,19 @@ function cofPlan(l,tk,maint){
       const x=C.x;picks.push({a:A.a,key:cofKey(A.a),txt:infraActTxt(A.a),eff:A.eff,cost:A.cost,edges:x.edges.slice()});infraActDo(A.a);}
     if(C&&!C.ok&&C.x&&!note)note="potrzeba więcej niż "+picks.length+" inwestycji";
     if(C&&C.ok&&!maint)C=cofTest(l,tk,false);          /* pełna kontrola: tory na krańcach i kolizje w rozkładzie */
+    /* v0.941: kolizje w rozkładzie — SBL (co 2 min) i 4 tory (dwa składy na kierunek) na odcinkach przy miejscu kolizji */
+    for(let g=0;g<4&&C&&!C.ok&&C.kind==="slot"&&!maint;g++){
+      const r=lineRoute(l),es=new Set(routeEdges(r)),nd=C.node,cnt=X=>X&&X.conf?X.conf[1]:(X&&X.ok?0:1e9);
+      const xs=sectionList().filter(x=>x.edges.some(e=>es.has(e)&&(nd==null||EDGES[e].a===nd||EDGES[e].b===nd)));
+      let best=null,bC=null;
+      for(const x of xs)for(const A of cofActs(x).filter(A=>A.a.kind==="sbl"||A.a.kind==="quad")){const sn=cofSnap();let C2;
+        try{infraActDo(A.a);C2=cofTest(l,tk,false);}finally{cofRest(sn);}
+        if(C2.ok||cnt(C2)<cnt(bC||C)){if(!best||C2.ok&&!bC.ok||cnt(C2)<cnt(bC)||(cnt(C2)===cnt(bC)&&A.cost<best.A.cost)){best={A,x};bC=C2;}}}
+      if(!best)break;
+      picks.push({a:best.A.a,key:cofKey(best.A.a),txt:infraActTxt(best.A.a),eff:best.A.eff,cost:best.A.cost,edges:best.x.edges.slice()});infraActDo(best.A.a);C=cofTest(l,tk,false);}
     if(C&&!C.ok&&!note){
       if(C.kind==="st")note=C.why+" — zajezdnię albo tory dokupisz w oknie wniosku";
-      else if(C.kind==="slot")note=C.why+" — tego rozbudowa szlaku nie usunie";
+      else if(C.kind==="slot")note=C.why+(picks.length?" — po tych inwestycjach kolizje wciąż zostają; rozważ inny takt":" — SBL ani 4 tory przy tym węźle ich nie usuwają; rozważ inny takt");
       else note=C.why;}
   }finally{cofRest(s0);}
   return {tk,maint:!!maint,picks,ok:!!(C&&C.ok),note,cost:picks.reduce((s,p)=>s+p.cost,0)};}
