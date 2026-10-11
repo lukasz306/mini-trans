@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.939</title>
+<title>Mini-trans by ŁL v0.94</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.939 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.94 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -1961,12 +1961,29 @@ function passingIdxAhead(tr,fromIdx){
     if(isPassing(r[j])||r[j-1]===r[j+1])return j;
   return tr.step>0?r.length-1:0;
 }
+let HOP_DET=1;
+/* odsetek pasażerów grupy, który przy objeździe +30% i dostępnej linii bez zajazdu i tak jedzie pociągiem z zajazdem */
+const DET_W=[0.7,0.6,0.5,0.3,0.1,0.05];
+/* czy z „at” do „d” jeździ inna linia (dowolnego przewoźnika) bez zajazdu — cache na godzinę gry */
+let DETC={h:-1,m:new Map()};
+function directAlt(at,d,skipLine){
+  const h=Math.floor(mins/60)+"|"+netVer;if(DETC.h!==h)DETC={h,m:new Map()};
+  const key=at*100000+d+"|"+skipLine;if(DETC.m.has(key))return DETC.m.get(key);
+  const pk=pathKm(at,d);let ok=false;
+  for(const l of lines){if(l.id===skipLine||!(l.takt>0))continue;const r=lineRoute(l),S=catSel(l.cat)?(l.stops||[]):null;
+    for(let i=0;i<r.length&&!ok;i++){if(r[i]!==at||!stopsAt(l.cat,at,r,S))continue;
+      for(const st of [1,-1]){let km=0;for(let k=i+st;k>=0&&k<r.length;k+=st){const e=edgeId(r[k-st],r[k]);km+=e!=null&&EDGES[e]?EDGES[e].km:0;
+          if(km>pk*1.1+2)break;if(r[k]===d){if(stopsAt(l.cat,d,r,S))ok=true;break;}}if(ok)break;}}
+    if(ok)break;}
+  DETC.m.set(key,ok);return ok;}
 function hopFor(tr,from,d){
   const r=tr.route,here=tr.ri;
   let best=null;const S=trStops(tr);
-  /* v0.939: cel dalej na trasie, także za zajazdem (trasa wraca przez te same stacje) — wsiada, gdy objazd ≤ +60% (lub +12 km) */
+  /* v0.94: cel dalej na trasie, także za zajazdem — pasażer jedzie zawsze; HOP_DET = stosunek drogi pociągu do najkrótszej
+     (boardPax: gdy inna linia jedzie tam bez zajazdu, część pasażerów — zależnie od grupy — woli na nią poczekać) */
+  HOP_DET=1;
   {let km=0;for(let k=here+tr.step;k>=0&&k<r.length;k+=tr.step){const e=edgeId(r[k-tr.step],r[k]);km+=e!=null&&EDGES[e]?EDGES[e].km:0;
-      if(r[k]===d){if(stopsAt(tr.cat,d,r,S,k,tr.step)){const pk=pathKm(from,d);if(pk>0&&km<=Math.max(pk*1.6,pk+12))return d;}break;}}}
+      if(r[k]===d){if(stopsAt(tr.cat,d,r,S,k,tr.step)){const pk=pathKm(from,d);HOP_DET=pk>0?km/pk:1;return d;}break;}}}
   for(let k=here+tr.step;k>=0&&k<r.length;k+=tr.step){
     const nd=r[k];
     if(!stopsAt(tr.cat,nd,r,S,k,tr.step))continue;
@@ -1988,8 +2005,9 @@ function boardPax(tr){
   let nIn=0,nServ=0,nAll=0;for(const d of dests)nAll+=st.wait[d];
   for(const d of dests){
     if(room<=0)break;
-    const hop=hopFor(tr,tr.at,d);
+    const hop=hopFor(tr,tr.at,d),det=hop===d?HOP_DET:1;
     if(hop==null||hop===tr.at)continue;
+    const detAlt=det>1.05&&directAlt(tr.at,d,tr.line);
     nServ+=st.wait[d];
     if(tr.shortEnd!=null&&tr.route){const hi=tr.route.indexOf(hop);if(hi<0||(tr.step>0?hi>tr.shortEnd:hi<tr.shortEnd))continue;}
     const ln=lineOf(tr),pf=priceF(own,ln,at,hop);
@@ -2005,6 +2023,7 @@ function boardPax(tr){
       if(oth<9&&pf>oth*1.05)will=Math.max(0.1,1-2*PCLS[c].ps*(pf/oth-1));
       if(c>=4&&othCat>(tr.cat||0))will*=0.4;
       if(c===5&&othMod>myMod+0.25)will*=0.6;
+      if(detAlt)will*=Math.pow(DET_W[c],(det-1)/0.3);       /* zajazd, a obok linia bez zajazdu */
       if(typeof cardShare==="function"){const sh=cardShare(c);
         if(sh>0){if(!own)will=sh+(1-sh)*will;                                  /* posiadacze karty gracza zostają przy nim */
           else if(po&&po.fby&&po.fby[0]!=null)will*=1-0.85*sh;}}                /* …i rzadko wsiadają do rywala na relacji, którą obsługuje gracz */
@@ -14828,8 +14847,9 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.939";
+const GAME_VER="0.94";
 const CHANGELOG=[
+ {v:"0.94",d:"październik 2026",c:["Pasażerowie jadą pociągiem z zajazdem; gdy obok jeździ linia bez zajazdu, część z nich (zależnie od grupy) woli na nią poczekać.","Zawieszanie kontraktów przez zamknięte przejście graniczne; propozycje dofinansowania rozbudowy przy ograniczeniach przepustowości.","SKM: tolerancja 5% liczby kursów w kontraktach."]},
  {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
  {v:"0.91",d:"październik 2026",c:["Przetargi na SKM albo SKM/R z wymaganym taktem.","Przetargi z wymaganą trasą (stacje pośrednie)."]},
