@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.937</title>
+<title>Mini-trans by ŁL v0.938</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.937 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.938 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -6849,6 +6849,9 @@ function aiStressFix(f,l,S,want){
       fLog(f,"🤝 "+f.name+" dofinansowuje (50%, "+fmt(pay)+") rozbudowę: "+fx.txt+" — przeciążenie trasy blokowało zagęszczenie "+lineName(l)+" (prognoza +"+fmt(gain)+"/mies.).",true);return true;}}
   return false;
 }
+EVMAP.capCof={choose(k,d){if(k!==0)return {text:"Bez zmian.",lines:[]};const l=lineById(d.lid);if(!l)return {text:"Linia już nie istnieje.",lines:[]};
+  const r=lineRoute(l);let e0=null;if(d.node!=null){const es=routeEdges(r).filter(e=>EDGES[e].a===d.node||EDGES[e].b===d.node);if(es.length)e0=es[0];}
+  setTimeout(()=>openCofSel(l.id,{e0,node:d.node}),60);return {text:"Wybierz odcinek i rodzaj rozbudowy.",lines:[]};}};
 function ctThinCommercial(T){
   const es=new Set();for(const x of T)for(const e of routeEdges(x.p))es.add(e);
   const C=lines.filter(l=>l.takt>0&&!lineIsCt(l)&&!l.pending&&!magLine(l)&&(l.auditT==null||mins-l.auditT>=1440))
@@ -7781,8 +7784,14 @@ function secCap(x){
   let blk=0;for(const e of x.edges)blk=Math.max(blk,edgeBlk(e));
   return (x.quad?4:2)*1020/Math.max(x.edges.every(e=>EDGES[e].sbl)?2:2.5,blk+1.5)*(x.quad?0.9:1);   /* 4 tory: dwa na kierunek (lekka strata na przeplataniu) */
 }
-function capNote(l,txt,good,sec){
+function capNote(l,txt,good,sec,node){
   const nm=lineName(l);
+  /* v0.938: linia gracza w trybie przewoźnika — od razu propozycja dofinansowania rozbudowy */
+  if(!l.owner&&!good&&isOp()){
+    evQueue({id:"capCof",k:"D",icon:"🚦",t:"Ograniczenie przepustowości",at:mins,pending:true,data:{lid:l.id,node:node??null},text:txt,
+      lines:sec?["Odcinek: "+sec]:[],
+      opts:[{l:"Dofinansowuję rozbudowę…",s:"mijanka, drugi tor, semafory, SBL, 4 tory — 50% albo 100%; zwrot 105% w ulgach na dostęp"},{l:"OK",s:"bez dofinansowania — zarządca rozbuduje odcinek według własnego budżetu"}]});
+    msg("🚦 "+txt);return;}
   if(!l.owner&&GAME.mode!=="manager"){v4Pop({icon:good?"✅":"🚦",t:good?"Przepustowość przywrócona":"Ograniczenie przepustowości",k:good?"C":"D",text:txt,lines:sec?["Odcinek: "+sec]:[]});msg((good?"✅ ":"🚦 ")+txt);}
   else v4News((good?"✅ ":"🚦 ")+txt);
 }
@@ -8151,13 +8160,13 @@ function* slotAuditGen(){              /* v0.82: generator — korekta linia po 
     const yct=lineContractTakt(y);if(yct!=null&&T[ti+1]>yct)continue;
     const fix2=findFree(T[ti+1]);
     if(fix2==null){if(!y.auditNo||mins-y.auditNo>3*1440){y.auditNo=mins;
-        capNote(y,"Korekta rozkładu: "+lineName(y)+(y.owner?" ("+ownerName(y.owner)+")":"")+" koliduje "+(ct?"z linią kontraktową "+lineName(ct):"z innymi liniami")+", ale rzadszy takt tego nie usunie — takt zostaje ("+y.takt+" min), a zarządca kieruje odcinek do rozbudowy."+whyNoProt(y),false,"");}
+        capNote(y,"Korekta rozkładu: "+lineName(y)+(y.owner?" ("+ownerName(y.owner)+")":"")+" koliduje "+(ct?"z linią kontraktową "+lineName(ct):"z innymi liniami")+", ale rzadszy takt tego nie usunie — takt zostaje ("+y.takt+" min), a zarządca kieruje odcinek do rozbudowy."+whyNoProt(y),false,"",[...r.nodes][0]);}
       continue;}
     for(const n of r.nodes)slotFixPush(y,n,2);                       /* rozrzedzenie — mocniejszy sygnał dla rozbudowy */
     const old=y.takt;if(y.takt0==null)y.takt0=old;y.takt=T[ti+1];y.last={};y.cool=3;y.auditT=mins;trains.forEach(t=>{if(t.line===y.id)t.depSlot=null;});phSet(y,fix2);
     const nd=[...r.nodes][0];out.push(lineName(y)+(y.owner?"":" (Ty)")+" "+old+"→"+y.takt+" min");nOther++;CTX=confCtx();
     capNote(y,"Korekta rozkładu: "+lineName(y)+(y.owner?" ("+ownerName(y.owner)+")":"")+" koliduje "+(ct?"z linią kontraktową "+lineName(ct):"z innymi liniami ("+Math.min(100,Math.round(sh*100))+"% odjazdów)")
-      +(nd!=null?" (np. "+N[nd].n+")":"")+" — zarządca rozrzedza takt "+old+" → "+y.takt+" min i kieruje odcinek do rozbudowy. Takt wróci, gdy zrobi się miejsce."+whyNoProt(y),false,nd!=null?N[nd].n:"");
+      +(nd!=null?" (np. "+N[nd].n+")":"")+" — zarządca rozrzedza takt "+old+" → "+y.takt+" min i kieruje odcinek do rozbudowy. Takt wróci, gdy zrobi się miejsce."+whyNoProt(y),false,nd!=null?N[nd].n:"",nd);
   }
   if(out.length)mgrLog("⏱️ Zarządca koryguje rozkład (kolizje): "+out.join(", ")+"; odcinki skierowane do rozbudowy.");
 }
@@ -14816,7 +14825,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.937";
+const GAME_VER="0.938";
 const CHANGELOG=[
  {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
