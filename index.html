@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.951</title>
+<title>Mini-trans by ŁL v0.952</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.951 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.952 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -7096,13 +7096,13 @@ function quadCheck(x,opt){
   if(!x.dbl){r.why="odcinek nie jest dwutorowy";return r;}
   if(x.quad){r.why="odcinek jest już czterotorowy";return r;}
   if(x.km>(hp?45:30)){r.why="za długi odcinek ("+Math.round(x.km)+" km, limit "+(hp?45:30)+" km między stacjami)";return r;}
-  const agl=[x.a,x.b].some(aglNode);
+  const hot=qHot(x),agl=[x.a,x.b].some(aglNode)||hot||onTroubledCt(x)||(opt&&opt.hot);
   if(!agl){r.why="odcinek poza aglomeracją — rezerwy terenu dla dodatkowych torów są tylko w miastach i najbliższej okolicy";return r;}
   let load=secLoad(x);
   const cap=secCap(x),semMax=x.edges.every(semFull);
   r.load=load;r.cap=cap;
   const use=Math.max(load/Math.max(1,cap),x.u||0);r.use=use;           /* teoretyczne albo rzeczywiste obciążenie — większe z nich */
-  if(use<(hp?0.6:0.85)){r.why="wykorzystanie odcinka "+Math.round(use*100)+"% ("+Math.round(load)+" kursów/dobę, przepustowość ok. "+Math.round(cap)+") — budowa nieuzasadniona (wymagane ≥ "+(hp?60:85)+"%"+(hp?"":"; przy częstych korektach rozkładu, kontraktach z opóźnieniami albo dofinansowaniu ≥ 60%")+")";return r;}
+  if(use<(hp?0.6:0.85)&&!hot&&!(opt&&opt.hot)){r.why="wykorzystanie odcinka "+Math.round(use*100)+"% ("+Math.round(load)+" kursów/dobę, przepustowość ok. "+Math.round(cap)+") — budowa nieuzasadniona (wymagane ≥ "+(hp?60:85)+"%"+(hp?"":"; przy częstych korektach rozkładu, kontraktach z opóźnieniami albo dofinansowaniu ≥ 60%")+")";return r;}
   if(!semMax){r.why="najpierw zagęść blokadę (semafory) — to dużo tańsze";return r;}
   r.ok=true;return r;
 }
@@ -8150,6 +8150,10 @@ function pressAdd(x,pts){if(!x||!isOp())return;const P=MGR.press||(MGR.press={})
   let mx=40;if(x.dbl&&x.runs!=null){const c=secCap(x);if(c>0&&x.runs<c*0.6){pts*=0.25;mx=10;}}
   pts*=1.3;                                   /* v0.84: presja na rozbudowę rośnie szybciej */
   for(const e of x.edges)P[e]=Math.max(P[e]||0,Math.min(mx,(P[e]||0)+pts));}
+/* v0.952: odcinki przy węzłach, gdzie kolizja z kontraktem wymusiła korektę rozkładu — tam wolno budować 4 tory także poza aglomeracją (180 dni) */
+function qHotMark(l,node){if(node==null||!isOp())return;const H=MGR.qHot||(MGR.qHot={});
+  for(const e of routeEdges(lineRoute(l)))if(EDGES[e].a===node||EDGES[e].b===node)H[e]=mins+180*1440;}
+function qHot(x){const H=MGR.qHot;if(!H)return false;return x.edges.some(e=>H[e]>mins);}
 function pressOf(x){const P=MGR.press||{};let m=0;for(const e of x.edges)m=Math.max(m,P[e]||0);return m;}
 function pressDecay(){const P=MGR.press||{},k=Math.pow(0.5,1/3);for(const e in P){P[e]*=k;if(P[e]<0.3)delete P[e];}}   /* połowa co 3 miesiące */
 function pressRelief(x){const P=MGR.press||{};for(const e of x.edges)if(P[e])P[e]*=0.5;}
@@ -8181,6 +8185,7 @@ function* slotAuditGen(){              /* v0.82: generator — korekta linia po 
     yield;if(!lines.includes(y)||!(y.takt>0)||y.pending)continue;CTX=confCtx();
     if(nOther>=6)break;
     for(const n of r.nodes)slotFixPush(y,n);
+    if(ct)for(const n of r.nodes)qHotMark(y,n);
     /* wolny slot przy danym takcie: bez kolizji z kontraktem i bez dużych kolizji z innymi */
     const findFree=tk=>{const old=y.takt;let fix=null;
       try{y.takt=tk;const phs=quickPhases(y,16);y.takt=old;
@@ -8784,17 +8789,17 @@ function infraActTxt(a){return a.kind==="loop"?"mijanka w "+N[a.n].n:a.kind==="x
   :a.kind==="semfull"?"pełna blokada semaforowa "+N[a.a].n+" – "+N[a.b].n:"semafory blokady "+N[a.a].n+" – "+N[a.b].n;}
 /* ==================== v0.842: DOFINANSOWANIE ROZBUDOWY Z OKNA WNIOSKU O SLOTY ==================== */
 /* rozbudowy możliwe na odcinku (z opisem efektu) */
-function cofActs(x){const o=[],P=(a,txt,eff)=>{const c=infraActCost(a);if(c>0)o.push({a,txt,eff,cost:Math.round(c/100)*100});};
+function cofActs(x,hot){const o=[],P=(a,txt,eff)=>{const c=infraActCost(a);if(c>0)o.push({a,txt,eff,cost:Math.round(c/100)*100});};
   if(!x.dbl){if(x.mid!=null&&x.T>8&&!(stations[x.mid].built&&stations[x.mid].extra>=1))P({kind:"loop",n:x.mid},"mijanka w "+N[x.mid].n,"pociągi mijają się w połowie odcinka — ok. 2× więcej kursów");
     P({kind:"dbl",a:x.a,b:x.b},"drugi tor","ruch w obu kierunkach niezależnie — kilka razy więcej kursów");return o;}
   if(!x.edges.every(semFull))P({kind:"semfull",a:x.a,b:x.b,edges:x.edges},"semafory (pełna blokada)","odstęp ok. 3–4 min w jednym kierunku");
   if(!x.edges.every(e=>EDGES[e].sbl)&&!x.edges.some(e=>EDGES[e].mag||edgeCls(e)>=5))P({kind:"sbl",a:x.a,b:x.b,edges:x.edges},"SBL (samoczynna blokada)","odjazdy w jednym kierunku nawet co 1 min, mniej kolizji w rozkładzie");
-  if(!x.quad&&x.km<=45&&[x.a,x.b].some(aglNode))P({kind:"quad",a:x.a,b:x.b,edges:x.edges},"4 tory","dwa tory na kierunek — szybkie i wolne pociągi się nie blokują");
+  if(!x.quad&&x.km<=45&&([x.a,x.b].some(aglNode)||hot||qHot(x)||onTroubledCt(x)))P({kind:"quad",a:x.a,b:x.b,edges:x.edges},"4 tory","dwa tory na kierunek — szybkie i wolne pociągi się nie blokują");
   return o;}
 /* odcinki trasy linii: najpierw ten, który blokuje wniosek */
 function cofSecList(l,off){const es=new Set(routeEdges(lineRoute(l))),S=sectionList().filter(x=>x.edges.some(e=>es.has(e)));
   const bad=x=>(off&&off.e0!=null&&x.edges.indexOf(off.e0)>=0)||(off&&off.node!=null&&(x.a===off.node||x.b===off.node))?1:0;
-  return S.map(x=>{const ld=secLoad(x),c=secCap(x);return {x,ld,c,u:c>0?ld/c:0,bad:bad(x),acts:cofActs(x)};}).filter(z=>z.acts.length).sort((a,b)=>b.bad-a.bad||b.u-a.u);}
+  return S.map(x=>{const ld=secLoad(x),c=secCap(x);return {x,ld,c,u:c>0?ld/c:0,bad:bad(x),acts:cofActs(x,!!bad(x))};}).filter(z=>z.acts.length).sort((a,b)=>b.bad-a.bad||b.u-a.u);}
 /* v0.844: takt docelowy zapamiętany przy wyborze pakietu dla taktu pośredniego */
 function cofGoal(l,g){if(g&&l.takt>g){l.takt0=g;l.cut=null;}}
 /* +25% pierwszeństwa w slotach dla linii gracza na odcinku sfinansowanym w 100% (12 mies.) */
@@ -8802,12 +8807,17 @@ function cofPrioK(l){if(!isOp()||!MGR.cofPrio||!MGR.cofPrio.length)return 1;MGR.
   const o=l.owner||0,P=MGR.cofPrio.filter(p=>(p.owner||0)===o);if(!P.length)return 1;
   const es=new Set(routeEdges(lineRoute(l)));return P.some(p=>p.edges.some(e=>es.has(e)))?1.25:1;}
 /* ponowne rozpatrzenie wniosku gracza (zmiana linii albo nowa linia) */
-function cofRecheck(l){if(!l||!lines.includes(l))return null;
+function cofRecheck(l,alt){if(!l||!lines.includes(l))return null;
   if(l.chgReq){const R=l.chgReq,C=cfgCheck(l,R.data);if(C.ok){l.chgReq=null;cfgCommit(l,R.data);trialCommit(C);cofGoal(l,R.goal);if(l.takt0!=null&&l.takt<=l.takt0){l.takt0=null;l.cut=null;}return "✅ Wniosek przyjęty — "+lineName(l)+" jeździ według nowego rozkładu.";}
     R.offer=null;R.wait=true;R.waitT=mins;return "Wniosek nadal czeka: "+C.why+".";}
   if(l.pending){const want=l.pending.want||l.takt,w=pendingFit(l,want),C=w?{ok:false,why:"brak przepustowości na odcinku "+N[w.x.a].n+" – "+N[w.x.b].n}:cfgCheck(l,{takt:want,pending:null});
     if(C.ok){const g0=l.pending.goal;l.takt=want;l.pending=null;cofGoal(l,g0);l.last={};trialCommit(C);trains.forEach(t=>{if(t.line===l.id)t.depSlot=null;});return "✅ Sloty przydzielone — "+lineName(l)+" rusza co "+want+" min.";}
     l.pending.offer=null;l.pending.waitFull=true;l.pending.waitT=mins;return "Wniosek nadal czeka: "+C.why+".";}
+  const rt=cofRestT(l);   /* v0.952: powrót do taktu sprzed korekty (albo pośredniego z wybranego pakietu) */
+  if(rt){let why="";for(const tk of [rt,alt].filter((v,i,a)=>v&&v<l.takt&&a.indexOf(v)===i)){const C=cfgCheck(l,{takt:tk});
+      if(C.ok){l.takt=tk;if(tk<=l.takt0){l.takt0=null;l.cut=null;}l.last={};trialCommit(C);trains.forEach(t=>{if(t.line===l.id)t.depSlot=null;});return "✅ "+lineName(l)+" wraca do taktu co "+tk+" min.";}
+      if(!why)why=C.why;}
+    return "Takt wróci, gdy zrobi się miejsce: "+why+".";}
   return null;}
 function cofBuy(lid,e0,ai,share){
   const l=lineById(lid),x=sectionList().find(z=>z.edges.indexOf(e0)>=0);if(!x)return "Odcinek już nie istnieje.";
@@ -14949,7 +14959,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.951";
+const GAME_VER="0.952";
 const CHANGELOG=[
  {v:"0.95",d:"październik 2026",c:["Przebudowa przeciążonych węzłów aglomeracyjnych w partnerstwie publiczno-prywatnym: Warszawa do 8 torów, inne do 6 torów, z parą tylko dla SKM.","SBL: odjazdy po jednym torze co 1 min.","4 i więcej torów: kilka składów jednego kierunku jednocześnie, także w kontroli rozkładu."]},
  {v:"0.94",d:"październik 2026",c:["Pasażerowie jadą pociągiem z zajazdem; gdy obok jeździ linia bez zajazdu, część z nich (zależnie od grupy) woli na nią poczekać.","Zawieszanie kontraktów przez zamknięte przejście graniczne; propozycje dofinansowania rozbudowy przy ograniczeniach przepustowości.","SKM: tolerancja 5% liczby kursów w kontraktach."]},
@@ -15207,7 +15217,9 @@ function cofTest(l,tk,capOnly){const o=capOnly?{capOnly:1}:null;
   if(l.chgReq)return cfgCheck(l,Object.assign({},l.chgReq.data,{takt:tk}),o);
   if(l.pending){const w=pendingFit(l,tk);if(w)return {ok:false,kind:"cap",x:w.x,why:"brak przepustowości na odcinku "+N[w.x.a].n+" – "+N[w.x.b].n};
     return cfgCheck(l,{takt:tk,pending:null},o);}
+  if(cofRestT(l))return cfgCheck(l,{takt:tk},o);      /* v0.952: powrót do taktu sprzed korekty zarządcy */
   return {ok:true};}
+function cofRestT(l){return !l.chgReq&&!l.pending&&l.takt>0&&l.takt0!=null&&l.takt0<l.takt?l.takt0:null;}
 /* utrzymanie obecnego taktu: odcinki trasy obciążone ponad 95% przepustowości */
 function cofMaint(l){const es=new Set(routeEdges(lineRoute(l)));let w=null;
   for(const x of sectionList()){if(!x.edges.some(e=>es.has(e)))continue;let ld=0;for(const q of secLines(x))ld+=secRuns(q,x);const c=secCap(x)*0.95;
@@ -15236,7 +15248,7 @@ function cofPlan(l,tk,maint){
       const nd=new Set((C.nodes&&C.nodes.length?C.nodes:[C.node]).filter(n=>n!=null)),near=e=>!nd.size||nd.has(EDGES[e].a)||nd.has(EDGES[e].b);
       const xs=sectionList().filter(x=>x.edges.some(e=>es.has(e)&&near(e)));
       let best=null,bC=null;
-      for(const x of xs)for(const A of cofActs(x).filter(A=>A.a.kind==="sbl"||A.a.kind==="quad")){const sn=cofSnap();let C2;
+      for(const x of xs)for(const A of cofActs(x,true).filter(A=>A.a.kind==="sbl"||A.a.kind==="quad")){const sn=cofSnap();let C2;
         try{infraActDo(A.a);C2=cofTest(l,tk,false);}finally{cofRest(sn);}
         if(C2.ok||cnt(C2)<cnt(bC||C)){if(!best||C2.ok&&!bC.ok||cnt(C2)<cnt(bC)||(cnt(C2)===cnt(bC)&&A.cost<best.A.cost)){best={A,x};bC=C2;}}}
       if(!best)break;
@@ -15255,6 +15267,7 @@ function cofTakts(l){
     if(onlyT&&want<l.takt){const mid=all.filter(v=>v>want&&v<l.takt);mid.slice(0,3).forEach(v=>out.push({tk:v,lab:"pośredni"}));}
     if(want!==l.takt||!onlyT)out.push({tk:want,lab:onlyT?"docelowy (wniosek)":"po zmianie z wniosku: "+cfgTxt(Object.assign({},l.chgReq.data,{takt:l.takt}),l),goal:true});}
   else if(l.pending){const want=l.pending.want||l.takt;all.filter(v=>v>want).slice(0,3).forEach(v=>out.push({tk:v,lab:"pośredni"}));out.push({tk:want,lab:"docelowy (wniosek)",goal:true});}
+  else if(cofRestT(l)){const want=cofRestT(l);all.filter(v=>v>want&&v<l.takt).slice(0,3).forEach(v=>out.push({tk:v,lab:"pośredni",rest:true}));out.push({tk:want,lab:"takt sprzed korekty zarządcy",goal:true,rest:true});}
   return out.sort((a,b)=>b.tk-a.tk);}
 function openCofSel(lid,off){
   const l=lineById(lid);if(!l){msg("Linia już nie istnieje.");return;}
@@ -15285,7 +15298,7 @@ function openCofSel(lid,off){
         +(P.note?"<small style='color:var(--mut);display:block;margin-top:3px'>"+P.note+"</small>":"")
         +"<div class='row' style='gap:6px;margin-top:6px'>"
         +(n?"<button class='ok' data-pk='"+i+"'>"+(all&&packTk===P.tk?"✓ zaznaczone":"Zaznacz "+(n===1?"tę":"te "+n))+"</button>":"")
-        +(!P.maint&&P.ok&&!n&&!P.goal?"<button class='ok' data-tk='"+i+"'>Zmień wniosek na "+tkTxt(P.tk)+"</button>":"")
+        +(!P.maint&&!P.rest&&P.ok&&!n&&!P.goal?"<button class='ok' data-tk='"+i+"'>Zmień wniosek na "+tkTxt(P.tk)+"</button>":"")
         +"</div></div>";});
     /* wszystkie odcinki trasy + pozycje z planu, których nie ma na obecnej liście (np. po mijance odcinek się dzieli) */
     h+="<h4>Odcinki trasy</h4>";
@@ -15334,11 +15347,11 @@ function openCofSel(lid,off){
     {const paid=its.filter(it=>it.cost>0).reduce((s,it)=>s+pay(it),0);if(paid>0)cofDeal(0,paid,"Rozbudowa dla "+lineName(l)+": "+done.concat(later).join(", "));}
     let r=null;
     if(later.length){if(l.chgReq){l.chgReq.offer=null;l.chgReq.wait=true;l.chgReq.waitT=mins;}if(l.pending){l.pending.offer=null;l.pending.waitFull=true;l.pending.waitT=mins;}}
-    else r=cofRecheck(l);
+    else r=cofRecheck(l,packTk);
     if(done.length)v4News("🤝 Finansujesz w całości: "+done.join(", ")+" — gotowe od razu; Twoje linie mają tam +25% pierwszeństwa w slotach przez 12 mies.");
     if(later.length)v4News("🤝 Dopłacasz 50% do: "+later.join(", ")+" — prace w najbliższym przeglądzie zarządcy (00:01), potem wniosek zostanie od razu rozpatrzony.");
     const txt=(done.length?"Zbudowano: "+done.join(", ")+". ":"")+(later.length?"Zarządca zbuduje w najbliższym przeglądzie: "+later.join(", ")+". ":"")
-      +(packTk!=null&&packTk!==want?"Wniosek: co "+packTk+" min (docelowo co "+want+" min). ":"")+(r||(later.length?"Wniosek zostanie rozpatrzony zaraz po budowie.":""))+" Zwrot "+fmt(Math.round(tot*COFIN_RET))+" w 50% uldze na dostęp.";
+      +(packTk!=null&&packTk!==want?"Wniosek: co "+packTk+" min (docelowo co "+want+" min). ":"")+(r||(later.length?(cofRestT(l)?"Takt wróci zaraz po budowie, jeśli zrobi się miejsce.":"Wniosek zostanie rozpatrzony zaraz po budowie."):""))+" Zwrot "+fmt(Math.round(tot*COFIN_RET))+" w 50% uldze na dostęp.";
     o.classList.remove("show");msg("🤝 "+txt);v4Pop({icon:"🤝",t:"Dofinansowanie rozbudowy",k:"C",text:txt,lines:[]});
   };
   draw();o.classList.add("show");
@@ -15346,7 +15359,7 @@ function openCofSel(lid,off){
   setTimeout(()=>{if(!lines.includes(l))return;
     const T=cofTakts(l);const out=[];
     for(const t of T){let P;try{P=cofPlan(l,t.tk,t.maint);}catch(e){console.error(e);P={tk:t.tk,picks:[],ok:false,note:"nie udało się policzyć",cost:0};}
-      P.lab=t.lab;P.goal=!!t.goal;P.maint=!!t.maint;out.push(P);
+      P.lab=t.lab;P.goal=!!t.goal;P.maint=!!t.maint;P.rest=!!t.rest;out.push(P);
       for(const p of P.picks)if(!known.has(p.key))known.set(p.key,{a:p.a,txt:p.txt,eff:p.eff,cost:p.cost,edges:p.edges});}
     plans=out;draw();},40);
 }
