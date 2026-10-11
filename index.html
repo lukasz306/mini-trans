@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.932</title>
+<title>Mini-trans by ŁL v0.933</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.932 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.933 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -6794,7 +6794,7 @@ function routeStress(l){
   if(!isOp())return null;
   const r=lineRoute(l),ns=new Set(r),es=new Set(routeEdges(r));
   for(const x of ctTroubled()){const ov=routeEdges(x.p).filter(e=>es.has(e));if(ov.length)
-    return {why:"kontrakt "+N[x.t.A].n+" – "+N[x.t.B].n+" na tej trasie traci kursy przez opóźnienia ("+Math.round(x.share*100)+"% kursów za wolnych) — linie komercyjne ustępują wtedy kontraktom",e:ov[0],ct:1};}
+    return {why:"kontrakt "+N[x.t.A].n+" – "+N[x.t.B].n+" na tej trasie traci kursy przez opóźnienia ("+Math.round(x.share*100)+"% kursów za wolnych) — linie komercyjne ustępują wtedy kontraktom",e:ov[0],ov,ct:1};}
   for(const j of jamList()){
     if(j.kind==="xtrack"&&ns.has(j.n))return {why:"zatory w "+N[j.n].n+" (pociągi czekały "+Math.round(j.v)+" min na wolny tor stacyjny)",node:j.n,st:1};
     if(j.kind==="sec"&&es.has(j.e))return {why:"zatory na szlaku "+N[j.a].n+" – "+N[j.b].n+" ("+Math.round(j.v)+" min)",e:j.e};}
@@ -6806,13 +6806,43 @@ function routeStress(l){
 /* rozrzedzenie linii komercyjnych (także gracza) dzielących trasę z kontraktami, którym przepadają kursy przez opóźnienia —
    o krok taktu, najwyżej raz na miesiąc na linię i łącznie o 2 kroki (nie rzadziej niż co 120 min); takt wraca, gdy trasa się odciąży */
 /* przeciążona trasa jako wynik sprawdzenia wniosku — gracz dostaje zwykłe opcje: dopłata do torów, dofinansowanie rozbudowy, czekanie */
-function stressC(l,S){
+function stressC(l,S){let C0=[];
   const secs=sectionList();let x=null;
-  if(S.e!=null)x=secs.find(z=>z.edges.indexOf(S.e)>=0)||null;
+  if(S.ov){const O=new Set(S.ov);C0=secs.filter(z=>z.edges.some(e=>O.has(e)));x=C0.find(z=>!(z.dbl&&z.quad))||C0[0]||null;}   /* najbardziej obciążony wspólny odcinek (lista posortowana wg obciążenia) */
+  else if(S.e!=null)x=secs.find(z=>z.edges.indexOf(S.e)>=0)||null;
   else if(S.node!=null){const r=lineRoute(l),es=routeEdges(r).filter(e=>EDGES[e].a===S.node||EDGES[e].b===S.node);if(es.length)x=secs.find(z=>z.edges.indexOf(es[0])>=0)||null;}
-  const C={ok:false,why:S.why,kind:"stress",node:S.node,x};
+  const C={ok:false,why:S.why,kind:"stress",node:S.node,x,xs:C0.length?C0:(x?[x]:[])};
   if(S.st&&S.node!=null&&stations[S.node].extra<MAX_EXTRA){C.kind="st";C.miss=Math.max(1,Math.min(2,MAX_EXTRA-stations[S.node].extra));}
   return C;
+}
+/* v0.933: przewoźnik AI na przeciążonej trasie — jak gracz: dopłata 50% do torów stacyjnych w miejscu zatoru albo 50% do rozbudowy odcinka,
+   gdy zwrot z gęstszego taktu ≤ 2 lata; po rozbudowie wniosek idzie dalej zwykłą drogą (przepustowość, kolizje) */
+/* odcinek dwutorowy bez dalszych możliwości rozbudowy (SBL już jest albo niemożliwa, szlak ≥ 160 km/h, 4 tory nieuzasadnione) */
+/* po rozbudowie w miejscu zatoru zapis zatoru znika (dane odświeżają się co miesiąc — bez tego ten sam zator blokowałby i kosztował wielokrotnie) */
+function jamClear(n,edges){if(n!=null){if(MGR.blk)delete MGR.blk[n];if(MGR.blkLast&&MGR.blkLast.st)delete MGR.blkLast.st[n];if(MGR.slotIss)delete MGR.slotIss[n];if(MGR.slotIssLast)delete MGR.slotIssLast[n];}
+  for(const e of edges||[]){if(MGR.blkE)delete MGR.blkE[e];if(MGR.blkLast&&MGR.blkLast.ed)delete MGR.blkLast.ed[e];}}
+function secMaxed(x){return x.dbl&&!sblCheck(x).ok&&x.edges.every(e=>edgeCls(e)>=2)&&!quadCheck(x).ok;}
+function aiStressFix(f,l,S,want){
+  if(!isOp()||!f||f.state!=="on"||f.crisis||!cofinEligible(f.id))return false;
+  if(l.cofT!=null&&mins-l.cofT<30*DAY)return false;
+  const m=MODELS[l.model]||MODELS[0],p=lineRoute(l),k=infC();
+  const gain=lineFc(f.id,p,l.cat||0,m,want,l.h1,l.h2,l.stops,lineFare(l),l).net-lineFc(f.id,p,l.cat||0,m,l.takt,l.h1,l.h2,l.stops,lineFare(l),l).net;
+  if(!(gain>0))return false;
+  const free=f.money-aiReserve(f)*(hasT(f,"safe")?1.5:1),lim=Math.min(free,gain*(hasT(f,"risk")||hasT(f,"expand")?30:24));
+  if(lim<1000*k)return false;
+  const C=stressC(l,S);
+  if(C.kind!=="st"&&C.xs.length&&C.xs.every(secMaxed))S.why2=" Odcinki na tej trasie są już rozbudowane do maksimum — dofinansowanie nic nie zmieni.";
+  if(C.kind==="st"){const st=stations[C.node],add=Math.min(C.miss,MAX_EXTRA-st.extra),pay=Math.round(COST_LOOP*add*0.5*k);
+    if(add>0&&pay<=lim&&capexOK(f,pay)){charge(f.id,pay,"capex");st.extra+=add;MGR.money-=Math.round(COST_LOOP*add*0.5*k);netChanged();l.cofT=mins;jamClear(C.node);
+      mgrLog("🤝 Zarządca dobudowuje "+add+" tor. stacyjne w "+N[C.node].n+" (50% dopłaty: "+f.name+").");
+      fLog(f,"🤝 "+f.name+" dopłaca "+fmt(pay)+" (50%) do torów stacyjnych w "+N[C.node].n+" — zatory blokowały zagęszczenie "+lineName(l)+" (prognoza +"+fmt(gain)+"/mies.).",true);return true;}}
+  for(const x of C.xs.slice(0,6)){const m0=MGR.money;MGR.money=Math.max(m0,0)+lim*2;          /* zarządca wykłada drugą połowę; pierwszy odcinek, który da się rozbudować */
+    let fx=null;try{fx=mgrFixSection(x,lim*2);}finally{if(!fx)MGR.money=m0;}
+    if(fx){const pay=Math.round(fx.cost*0.5/100)*100;MGR.money=m0-(fx.cost-pay);
+      charge(f.id,pay,"capex");l.cofT=mins;jamClear(null,x.edges);
+      mgrLog("🤝 Zarządca: "+fx.txt+" (50% dopłaty: "+f.name+").");
+      fLog(f,"🤝 "+f.name+" dofinansowuje (50%, "+fmt(pay)+") rozbudowę: "+fx.txt+" — przeciążenie trasy blokowało zagęszczenie "+lineName(l)+" (prognoza +"+fmt(gain)+"/mies.).",true);return true;}}
+  return false;
 }
 function ctThinCommercial(T){
   const es=new Set();for(const x of T)for(const e of routeEdges(x.p))es.add(e);
@@ -8108,7 +8138,7 @@ function stChoose(a,o){
   if(a&&a.startsWith("dep")){const k=+a.slice(3),n=o.st.node,c=depotFixCost(n,0,k);if(!pay(c))return {err:"Za mało pieniędzy na zajezdnię."};depotDo(n,0,k);
     return {txt:"Zajezdnia "+DEPOT_SIZES[k].n+" w "+N[n].n+" gotowa ("+DEPOT_SIZES[k].tr+" tor. odstawczych)."};}
   if(a==="cotr"){const n=o.st.node,c=Math.round(COST_LOOP*o.st.miss*0.5*infC());if(money<c)return {err:"Za mało pieniędzy ("+fmt(c)+")."};
-    money-=c;brAdd("capex",-c);const st=stations[n],add=Math.min(o.st.miss,MAX_EXTRA-st.extra);st.extra+=add;MGR.money-=Math.round(COST_LOOP*add*0.5*infC());netChanged();
+    money-=c;brAdd("capex",-c);const st=stations[n],add=Math.min(o.st.miss,MAX_EXTRA-st.extra);st.extra+=add;MGR.money-=Math.round(COST_LOOP*add*0.5*infC());netChanged();if(typeof jamClear==="function")jamClear(n);
     mgrLog("🤝 Zarządca dobudowuje "+add+" tor. stacyjne w "+N[n].n+" (50% dopłaty przewoźnika).");
     return {txt:"Dopłata przekazana — w "+N[n].n+" przybyło "+add+" tor. stacyjnych."};}
   return null;
@@ -8121,8 +8151,9 @@ function* densifyAllocGen(){          /* v0.82: generator — każdy wniosek (pr
     if(cofPendingFor(l))continue;                 /* v0.845: czeka na rozbudowę, którą dofinansował */
     const R=l.densReq;l.densReq=null;
     const f=l.owner?firmById(l.owner):null;if(!f||f.state!=="on"||!(R.takt<l.takt)||l.pending)continue;
-    {const S=!lineIsCt(l)?routeStress(l):null;if(S){l.densNo=mins;if(S.node!=null)slotFixPush(l,S.node,2);
-      fLog(f,"⛔ Zarządca odmawia "+f.name+" zagęszczenia "+lineName(l)+" do co "+R.takt+" min: "+S.why+". Takt zostaje co "+l.takt+" min.",true);continue;}}
+    {const S=!lineIsCt(l)?routeStress(l):null;
+      if(S&&!aiStressFix(f,l,S,R.takt)){l.densNo=mins;if(S.node!=null)slotFixPush(l,S.node,2);
+        fLog(f,"⛔ Zarządca odmawia "+f.name+" zagęszczenia "+lineName(l)+" do co "+R.takt+" min: "+S.why+"."+(S.why2||"")+" Takt zostaje co "+l.takt+" min.",true);continue;}}
     let tk=R.takt,C=cfgCheck(l,{takt:tk});
     for(let g=0;g<2&&!C.ok&&C.kind==="st";g++){const m0=MODELS[l.model]||MODELS[0],p0=lineRoute(l);
       const gain=lineFc(f.id,p0,l.cat||0,m0,tk,l.h1,l.h2,l.stops,lineFare(l),l).net-lineFc(f.id,p0,l.cat||0,m0,l.takt,l.h1,l.h2,l.stops,lineFare(l),l).net;
@@ -14732,7 +14763,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.932";
+const GAME_VER="0.933";
 const CHANGELOG=[
  {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
