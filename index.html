@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.931</title>
+<title>Mini-trans by ŁL v0.932</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.931 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.932 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -6793,11 +6793,11 @@ function lineIsCt(l){return l.tender!=null||(typeof lineContractTakt==="function
 function routeStress(l){
   if(!isOp())return null;
   const r=lineRoute(l),ns=new Set(r),es=new Set(routeEdges(r));
-  for(const x of ctTroubled())if(routeEdges(x.p).some(e=>es.has(e)))
-    return {why:"kontrakt "+N[x.t.A].n+" – "+N[x.t.B].n+" na tej trasie traci kursy przez opóźnienia ("+Math.round(x.share*100)+"% kursów za wolnych)"};
+  for(const x of ctTroubled()){const ov=routeEdges(x.p).filter(e=>es.has(e));if(ov.length)
+    return {why:"kontrakt "+N[x.t.A].n+" – "+N[x.t.B].n+" na tej trasie traci kursy przez opóźnienia ("+Math.round(x.share*100)+"% kursów za wolnych) — linie komercyjne ustępują wtedy kontraktom",e:ov[0],ct:1};}
   for(const j of jamList()){
-    if(j.kind==="xtrack"&&ns.has(j.n))return {why:"zatory w "+N[j.n].n+" (pociągi czekały "+Math.round(j.v)+" min)",node:j.n};
-    if(j.kind==="sec"&&es.has(j.e))return {why:"zatory na szlaku "+N[j.a].n+" – "+N[j.b].n+" ("+Math.round(j.v)+" min)"};}
+    if(j.kind==="xtrack"&&ns.has(j.n))return {why:"zatory w "+N[j.n].n+" (pociągi czekały "+Math.round(j.v)+" min na wolny tor stacyjny)",node:j.n,st:1};
+    if(j.kind==="sec"&&es.has(j.e))return {why:"zatory na szlaku "+N[j.a].n+" – "+N[j.b].n+" ("+Math.round(j.v)+" min)",e:j.e};}
   const SI=Object.assign({},MGR.slotIssLast||{});for(const k in (MGR.slotIss||{}))SI[k]=(SI[k]||0)+MGR.slotIss[k];
   let bn=null,bv=0;for(const k in SI)if(ns.has(+k)&&SI[k]>bv){bv=SI[k];bn=+k;}
   if(bn!=null&&bv>=2)return {why:"nierozwiązane kolizje w rozkładzie w "+N[bn].n,node:bn};
@@ -6805,6 +6805,15 @@ function routeStress(l){
 }
 /* rozrzedzenie linii komercyjnych (także gracza) dzielących trasę z kontraktami, którym przepadają kursy przez opóźnienia —
    o krok taktu, najwyżej raz na miesiąc na linię i łącznie o 2 kroki (nie rzadziej niż co 120 min); takt wraca, gdy trasa się odciąży */
+/* przeciążona trasa jako wynik sprawdzenia wniosku — gracz dostaje zwykłe opcje: dopłata do torów, dofinansowanie rozbudowy, czekanie */
+function stressC(l,S){
+  const secs=sectionList();let x=null;
+  if(S.e!=null)x=secs.find(z=>z.edges.indexOf(S.e)>=0)||null;
+  else if(S.node!=null){const r=lineRoute(l),es=routeEdges(r).filter(e=>EDGES[e].a===S.node||EDGES[e].b===S.node);if(es.length)x=secs.find(z=>z.edges.indexOf(es[0])>=0)||null;}
+  const C={ok:false,why:S.why,kind:"stress",node:S.node,x};
+  if(S.st&&S.node!=null&&stations[S.node].extra<MAX_EXTRA){C.kind="st";C.miss=Math.max(1,Math.min(2,MAX_EXTRA-stations[S.node].extra));}
+  return C;
+}
 function ctThinCommercial(T){
   const es=new Set();for(const x of T)for(const e of routeEdges(x.p))es.add(e);
   const C=lines.filter(l=>l.takt>0&&!lineIsCt(l)&&!l.pending&&!magLine(l)&&(l.auditT==null||mins-l.auditT>=1440))
@@ -8150,14 +8159,13 @@ function* densifyAllocGen(){          /* v0.82: generator — każdy wniosek (pr
       cfgCommit(l,Object.assign({},data,{takt:ct}));
       capacityAlloc(new Set(routeEdges(lineRoute(l))),true);   /* od razu: brak miejsca → rozrzedzenie linii komercyjnych na trasie (kontrakty nietknięte) */
       v4Pop({icon:"📜",t:"Takt kontraktowy przyznany",k:"C",text:lineName(l)+" — od razu co "+ct+" min (takt chroniony kontraktem, z zapasem). Wniosek o co "+data.takt+" min rozpatrywany dalej na zwykłych zasadach.",lines:[]});}}
-    {const S=data.takt!=null&&data.takt<l.takt&&!lineIsCt(l)?routeStress(l):null;
-      if(S){l.chgReq=null;if(S.node!=null)slotFixPush(l,S.node,2);
-        v4Pop({icon:"⛔",t:"Zarządca odmawia zagęszczenia",k:"D",text:"Wniosek o zagęszczenie "+nm+" do co "+data.takt+" min odrzucony: "+S.why+". Linie komercyjne ustępują wtedy kontraktom — złóż wniosek ponownie, gdy trasa się odciąży.",lines:[]});continue;}}
-    const C=cfgCheck(l,data);
+    /* v0.932: przeciążona trasa (zatory, nierozwiązane kolizje, kontrakty z opóźnieniami) — bez zagęszczenia, ale z ofertą rozwiązań */
+    const S=data.takt!=null&&data.takt<l.takt&&!lineIsCt(l)?routeStress(l):null;
+    const C=S?stressC(l,S):cfgCheck(l,data);
     if(C.ok){l.chgReq=null;const was=l.takt;cfgCommit(l,data);trialCommit(C);cofGoal(l,R.goal);if(l.takt0!=null&&l.takt<=l.takt0){l.takt0=null;l.cut=null;}
       v4Pop({icon:"✅",t:"Zarządca przyznał sloty",k:"C",text:"Wniosek o zmianę "+lineName(l)+" przyjęty — "+cfgTxt(data,Object.assign({},l,{takt:was}))+". Nowy rozkład obowiązuje od teraz.",lines:[]});continue;}
     if(R.wait){if(R.waitT==null)R.waitT=mins;if(mins-R.waitT<1440)continue;R.wait=false;R.waitT=null;R.again=true;}   /* po miesiącu czekania — okno z tym, co zarządca może dać */
-    const onlyT=cfgOnlyTakt(l,data),best=cfgBestTakt(l,data,onlyT?l.takt:null);   /* sama zmiana taktu: częściowo = gęściej niż teraz */
+    const onlyT=cfgOnlyTakt(l,data),best=S?null:cfgBestTakt(l,data,onlyT?l.takt:null);   /* sama zmiana taktu: częściowo = gęściej niż teraz */
     R.offer={takt:best,why:C.why,node:C.node,e0:C.x?C.x.edges[0]:null,a:C.x?C.x.a:null,b:C.x?C.x.b:null,st:C.kind==="st"?{node:C.node,miss:C.miss}:null};
     if(C.x){(MGR.capFixLow||(MGR.capFixLow=[])).push(C.x.edges[0]);pressAdd(C.x,2);}else if(C.kind==="slot"&&C.node!=null)slotFixPush(l,C.node,2);
     const opts=[],keys=[];
@@ -8168,7 +8176,7 @@ function* densifyAllocGen(){          /* v0.82: generator — każdy wniosek (pr
     keys.push("cancel");opts.push({l:"Wycofuję wniosek",s:"linia zostaje bez zmian"});
     R.offer.keys=keys;
     evQueue({id:"slotChange",k:"T",icon:"🚦",t:"Wniosek o sloty: "+nm,at:mins,pending:true,data:{lid:l.id},opts,
-      text:(R.again?"Wniosek czeka od "+dateTxt(R.t)+". ":"")+"Zarządca nie może przydzielić slotów dla zmiany "+nm+" ("+cfgTxt(data,l)+"): "+C.why+"."+(best?" Możliwy jest takt co "+best+" min.":onlyT?" Gęstszy takt niż obecny ("+l.takt+" min) też się nie mieści.":" Rzadszy takt też nie mieści się w rozkładzie."),
+      text:(R.again?"Wniosek czeka od "+dateTxt(R.t)+". ":"")+"Zarządca nie może przydzielić slotów dla zmiany "+nm+" ("+cfgTxt(data,l)+"): "+C.why+"."+(S?" Na przeciążonej trasie zarządca nie przyznaje zagęszczeń — możesz dopłacić do rozbudowy w miejscu problemu albo poczekać, aż trasa się odciąży.":best?" Możliwy jest takt co "+best+" min.":onlyT?" Gęstszy takt niż obecny ("+l.takt+" min) też się nie mieści.":" Rzadszy takt też nie mieści się w rozkładzie."),
       lines:["Obecnie: co "+l.takt+" min, "+String(l.h1).padStart(2,"0")+":00–"+String(l.h2).padStart(2,"0")+":00"]});
   }
 }
@@ -14724,7 +14732,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.931";
+const GAME_VER="0.932";
 const CHANGELOG=[
  {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
  {v:"0.92",d:"październik 2026",c:["Zapisy gry na koncie claude.ai (w opublikowanej grze).","Kontrakty czekają na dostosowanie infrastruktury; wymóg taktu liczony łącznie dla linii przewoźnika."]},
