@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.96</title>
+<title>Mini-trans by ŁL v0.961</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.96 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.961 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -14302,8 +14302,8 @@ function stationBoard(i,kind){
       const i0=dir>0?0:r.length-1,iEnd=dir>0?r.length-1:0,ph=phaseOf(l,r[i0]);
       if(kind==="dep"&&idx===iEnd)continue;          /* stąd już nie odjeżdża */
       if(kind==="arr"&&idx===i0)continue;            /* tu dopiero rusza */
-      let off=0,hd=0;
-      if(idx!==i0){const o=planOffsets(r,i0,dir,m,l.cat,S,lineHold(l,dir));hd=(o.h&&o.h[idx])||0;off=(o[idx]??0)+(kind==="dep"?1:-hd);}
+      let off=0,hd=0;const o=planOffsets(r,i0,dir,m,l.cat,S,lineHold(l,dir)),oA=k=>(o[k]??0)-((o.h&&o.h[k])||0);   /* oA: planowy przyjazd na r[k] */
+      if(idx!==i0){hd=(o.h&&o.h[idx])||0;off=(o[idx]??0)+(kind==="dep"?1:-hd);}
       const dest=N[r[iEnd]].n,from=N[r[i0]].n;
       const via=[];for(let k=idx+dir;k!==iEnd&&k>=0&&k<r.length;k+=dir){const n=r[k];
         if(stopsAt(l.cat,n,r,S)&&N[n].p>=5000&&via.length<2)via.push(N[n].n);}
@@ -14323,7 +14323,8 @@ function stationBoard(i,kind){
         let delay=null;
         const tr=trains.find(x=>x.run&&x.run.line===l.id&&Math.abs(x.run.t0-s)<0.5&&x.run.i0===i0);
         if(tr)delay=Math.round(tr.delay||0);
-        out.push({t,cat:l.cat,line:l.id,dest:dst,via:shortTxt?[]:via,owner:l.owner||0,delay,past:t<now-1,short:shortTxt,hold:hd});
+        const ea=kind==="dep"?s+oA(sk!=null?sk:iEnd):null;         /* orientacyjny przyjazd na stację docelową */
+        out.push({t,cat:l.cat,line:l.id,dest:dst,via:shortTxt?[]:via,owner:l.owner||0,delay,past:t<now-1,short:shortTxt,hold:hd,ea});
       }
     }
   }
@@ -14355,6 +14356,7 @@ function stationBoard(i,kind){
           const tt=t+((offM[idx]??0)-(offM[K]??0))+(kind==="dep"&&idx!==K?1:0)-(kind==="arr"?1:0);
           if(tt<d0||tt>=d1)return;
           out.push({t:tt,cat:l.cat,line:l.id,dest:kind==="dep"?N[r[iEnd]].n:N[r[K]].n,via:[],owner:l.owner||0,delay:null,past:tt<now-1,
+            ea:kind==="dep"?t+((offM[iEnd]??0)-((offM.h&&offM.h[iEnd])||0))-(offM[K]??0):null,
             short:idx===K&&kind==="dep"?"pierwszy kurs z zajezdni":""});
         }
       });
@@ -14376,7 +14378,7 @@ function renderBoard(i){
     const cls=r.past?" past":(!nextMarked?(nextMarked=true," next"):"");
     h+="<div class='br"+cls+"'"+(cls===" next"?" id='sbNext'":"")+"><span class='bt'>"+hhmm(r.t)+"</span><span><b style='color:"+C.col+"'>"+C.code+"</b> "+r.line
       +(GAME.mode!=="classic"?"<i style='display:inline-block;width:7px;height:7px;border-radius:2px;margin-left:4px;background:"+oc+"'></i>":"")
-      +"</span><span class='bd'>"+r.dest+(r.short?"<small style='color:var(--amber)'>"+r.short+"</small>":r.via.length?"<small>przez "+r.via.join(", ")+"</small>":"")+(r.hold?"<small style='color:var(--mut)'>⏸️ postój planowy "+r.hold+" min</small>":"")+"</span><span>"+st
+      +"</span><span class='bd'>"+r.dest+(r.ea!=null?"<span style='font-size:10px;color:var(--mut);margin-left:6px;white-space:nowrap' title='orientacyjny przyjazd'>⇢ "+hhmm(r.ea)+"</span>":"")+(r.short?"<small style='color:var(--amber)'>"+r.short+"</small>":r.via.length?"<small>przez "+r.via.join(", ")+"</small>":"")+(r.hold?"<small style='color:var(--mut)'>⏸️ postój planowy "+r.hold+" min</small>":"")+"</span><span>"+st
       +(GAME.mode!=="classic"?"<small>"+ownerName(r.owner)+"</small>":"")+"</span></div>";
   }
   return h+"</div>";
@@ -15093,7 +15095,7 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.96";
+const GAME_VER="0.961";
 const CHANGELOG=[
  {v:"0.96",d:"październik 2026",c:["Postoje planowe: zarządca może zatrzymać pociąg na kilka minut na stacji z wolnym torem (wyprzedzanie, krzyżowanie, rozdzielenie odjazdów), zanim rozrzedzi takt; limity wg kategorii.","Kontrola rozkładu uwzględnia doganianie wolniejszego pociągu na odcinku i krzyżowania na liniach jednotorowych.","Pociągi nie odjeżdżają ze stacji pośrednich więcej niż 3 min przed rozkładem; postoje planowe widać w rozkładzie linii i na tablicach."]},
  {v:"0.95",d:"październik 2026",c:["Przebudowa przeciążonych węzłów aglomeracyjnych w partnerstwie publiczno-prywatnym: Warszawa do 8 torów, inne do 6 torów, z parą tylko dla SKM.","SBL: odjazdy po jednym torze co 1 min.","4 i więcej torów: kilka składów jednego kierunku jednocześnie, także w kontroli rozkładu."]},
