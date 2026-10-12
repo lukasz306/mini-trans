@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1c211d">
-<title>Mini-trans by ŁL v0.952</title>
+<title>Mini-trans by ŁL v0.96</title>
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{--bg:#1c211d;--panel:#262c27;--panel2:#2e3630;--dim:#49544c;--amber:#f2b33d;
@@ -123,7 +123,7 @@
 <body>
 <div id="app">
   <header>
-    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.952 · Warmia · Mazury · Podlasie</span></div>
+    <div class="logo"><b>MINI-TRANS</b><span>by ŁL · v0.96 · Warmia · Mazury · Podlasie</span></div>
     <div class="clock" id="clock"></div>
     <div class="spd">
       <button id="sp0">⏸</button><button id="sp1" class="on">1×</button>
@@ -2291,7 +2291,7 @@ function nearestDepot(node,owner){
 /* Zarządca przydziela sloty: linie na wspólnym odcinku dostają fazy tak, by pociągi w każdym kierunku
    przejeżdżały go w możliwie równych odstępach. Pełna korekta rozkładu — na początku doby;
    nowa lub zmieniona linia dostaje slot od razu, bez ruszania pozostałych. */
-let PH={map:{},sig:{},w:{},tb:{}};
+let PH={map:{},sig:{},w:{},tb:{},h:{}};
 function lineKey(l){return l.A+":"+l.B+":"+(l.via??"")+":"+l.takt+":"+l.cat+":"+l.model+":"+(l.stops||[]).join(",")+(l.wps&&l.wps.length?":w"+l.wps.join("."):"");}
 /* model slotów (czasy wjazdów linii na odcinki) — ten sam przez minutę gry, dopóki nie zmienią się linie ani sieć */
 let SMC={k:null,v:null};
@@ -2499,7 +2499,7 @@ function slotTotal(M,St){M=M||slotModel();const S=St||PH,o=PHW;PHW=S;let c=slotC
   for(const id in (M.par||{}))for(const q of M.par[id]){const a=S.map[id]||0,b=q.same?(S.map[q.o]||0):phB(q.o,S.map,M);
     const my=a;const dv=parDev(my-b,q.g,q.step,q.k);c+=PAR_W*dv*dv/2;}
   PHW=o;return c;}
-function phClone(S){return {map:Object.assign({},S.map),sig:Object.assign({},S.sig),w:Object.assign({},S.w),tb:Object.assign({},S.tb)};}
+function phClone(S){return {map:Object.assign({},S.map),sig:Object.assign({},S.sig),w:Object.assign({},S.w),tb:Object.assign({},S.tb),h:Object.assign({},S.h||{})};}
 /* pełna korekta rozkładu (1:00 i 13:00) — liczona w tle na kopii, zastosowana na końcu */
 function* dailySlotsGen(){
   const deep=SLOT_DEEP;SLOT_DEEP=false;SLOT_FULL_T=mins;
@@ -2513,12 +2513,12 @@ function* dailySlotsGen(){
   /* szukanie od nowa i losowe starty — raz na dobę (01:00); w pozostałych korektach tylko poprawa obecnego rozkładu */
   if(!deep&&ids.length>12){yield* dailyFinish(best,old,oldW);return;}
   /* wariant 2: rozkład układany od nowa, linia po linii, potem dopracowany */
-  St={map:{},sig:{},w:{},tb:{}};for(const id of ids)yield* optimizeSlotsGen([id],M,St);yield* optimizeSlotsGen(null,M,St);
+  St={map:{},sig:{},w:{},tb:{},h:{}};for(const id of ids)yield* optimizeSlotsGen([id],M,St);yield* optimizeSlotsGen(null,M,St);
   {const c=slotTotal(M,St);if(c<bc-1e-9){bc=c;best=St;}}
   /* wariant 3: kilka losowych startów — żeby nie utknąć w złym ułożeniu (przy dużej sieci mniej) */
   const nr=ids.length>30?2:4;
   for(let rs=0;rs<nr;rs++){
-    St={map:{},sig:{},w:{},tb:{}};for(const id of ids){const l=M.byId[id];St.map[id]=Math.floor(Math.random()*l.takt);St.w[id]=0;}
+    St={map:{},sig:{},w:{},tb:{},h:{}};for(const id of ids){const l=M.byId[id];St.map[id]=Math.floor(Math.random()*l.takt);St.w[id]=0;}
     yield* optimizeSlotsGen(null,M,St);const c=slotTotal(M,St);if(c<bc-1e-9){bc=c;best=St;}
   }
   yield* dailyFinish(best,old,oldW);
@@ -2527,8 +2527,13 @@ function stConflicts(St){const sv=PH;PH=St;let n;try{n=scheduleConflicts().lengt
 function stMinGap(M,St){const o=PHW;PHW=St;const sv=PH;PH=St;let g;try{g=slotMinGap(M);}finally{PH=sv;PHW=o;}return g;}
 function* dailyFinish(best,old,oldW){
   /* linie zmienione w trakcie liczenia — zostawiamy im obecne sloty (dostaną nowe przy kolejnej korekcie) */
-  for(const l of lines)if(l.takt>0&&(best.sig[l.id]!==lineKey(l))&&PH.sig[l.id]===lineKey(l)){best.map[l.id]=PH.map[l.id];best.w[l.id]=PH.w[l.id];best.tb[l.id]=PH.tb[l.id];best.sig[l.id]=PH.sig[l.id];}
-  PH=best;yield;
+  for(const l of lines)if(l.takt>0&&(best.sig[l.id]!==lineKey(l))&&PH.sig[l.id]===lineKey(l)){best.map[l.id]=PH.map[l.id];best.w[l.id]=PH.w[l.id];best.tb[l.id]=PH.tb[l.id];best.sig[l.id]=PH.sig[l.id];if(PH.h&&PH.h[l.id])(best.h||(best.h={}))[l.id]=PH.h[l.id];}
+  const oldH=Object.assign({},PH.h||{});
+  PH=best;if(!PH.h)PH.h={};yield;
+  /* v0.96: postoje planowe — po ułożeniu faz, dla wszystkich linii (najpierw najmniej ważne) */
+  yield* holdPassGen(lines.filter(l=>l.takt>0).map(l=>l.id),PH);HOLDV++;
+  {const nw=[];for(const l of lines){const a=JSON.stringify(oldH[l.id]||null),b=JSON.stringify(PH.h[l.id]||null);if(a!==b&&PH.h[l.id])nw.push(l);}
+    if(nw.length&&typeof v4News==="function")v4News("⏸️ Zarządca wyznacza postoje planowe (wyprzedzanie, krzyżowanie, rozdzielenie odjazdów): "+nw.slice(0,4).map(l=>"L"+l.id+" "+holdTxt(l).split(", ").slice(0,2).join(", ")).join("; ")+(nw.length>4?" i "+(nw.length-4)+" inne":"")+".");}
   let cf=scheduleConflicts();yield;
   if(cf.length){const g=fixConflictsGen();let r;while(!(r=g.next()).done)yield;cf=r.value;}
   if(cf.length&&typeof MGR!=="undefined"){const S=MGR.slotIss||(MGR.slotIss={});for(const x of cf)if(x.node!=null)S[x.node]=(S[x.node]||0)+1;}
@@ -2550,47 +2555,122 @@ function confKey(l,a,b){const e=edgeId(a,b);return (magLine(l)?"m":catSkm(l.cat)
 /* kolizja pary x,y przy k torach jednego kierunku: dopiero gdy w oknie jest więcej niż k składów */
 function confOver(arr,x,y,L,k,skip1,skip2){if(k<=1)return true;let c=2;for(const z of arr){if(z===x||z===y||z.id===skip1||z.id===skip2)continue;if(cycD(z.t,z.takt,x.t,x.takt)<L&&cycD(z.t,z.takt,y.t,y.takt)<L)c++;}return c>k;}
 function cycD(t1,k1,t2,k2){const G=gcd(Math.round(k1),Math.round(k2));if(G<15)return Infinity;let d=Math.abs(t1-t2)%G;return Math.min(d,G-d);}
+/* v0.96: zdarzenia rozkładu linii — odjazd z każdej stacji na kolejny odcinek (t — minuta w takcie, run — czas jazdy do następnego węzła).
+   Odcinki jednotorowe: dodatkowo przejazd całego jednotorowego kawałka do najbliższej mijanki (u — klucz kawałka, sa — skąd wjeżdża, srun — czas). */
+function lineTB(l){const r=lineRoute(l);return lineTimeP(r,l.model,l.cat,catSel(l.cat)?(l.stops||[]):null)+TURN;}
+function lineEvents(l,St,o){
+  const r=lineRoute(l);if(!r||r.length<2||!(l.takt>0))return [];
+  const takt=(o&&o.takt)||l.takt,ph0=o&&o.ph!=null?o.ph:(St.map[l.id]||0),w=o&&o.w!=null?o.w:(St.w[l.id]||0);
+  const tb=St.tb&&St.tb[l.id]!=null&&(!St.sig||St.sig[l.id]===lineKey(l))?St.tb[l.id]:lineTB(l);
+  const H=o&&o.h!==undefined?o.h:lineHolds(l,St);
+  const out=[],mg=magLine(l),skm=catSkm(l.cat);
+  for(const dir of [1,-1]){const i0=dir>0?0:r.length-1,iE=dir>0?r.length-1:0;
+    const of=offH(planBase(l,r,i0,dir),r,i0,dir,H?(dir>0?H.f:H.b):null),hh=of.h||{};
+    const ph=ph0+(r[i0]===l.B&&l.A!==l.B?tb+w:0);
+    for(let k=i0;k!==iE;k+=dir){const n=r[k];if(!stations[n].built)continue;const nx=k+dir,e=edgeId(n,r[nx]);
+      const dep=k===i0?0:(of[k]??0)+1,arr=(of[nx]??0)-(hh[nx]||0);
+      const x={id:l.id,key:confKey(l,n,r[nx]),t:((ph+dep)%takt+takt)%takt,run:Math.max(0,arr-dep),takt,n,k,dir,lim:confLim(n,r[nx]),ln:confK(n,r[nx],skm)};
+      const E=e!=null?EDGES[e]:null;
+      if(E&&!mg&&E.tracks!==2&&!E.quad&&(k===i0||isPassing(n))){let j=nx;while(j!==iE&&!isPassing(r[j]))j+=dir;
+        const aj=(of[j]??0)-(hh[j]||0);x.u="u"+Math.min(n,r[j])+"-"+Math.max(n,r[j]);x.sa=n;x.srun=Math.max(0,aj-dep);}
+      out.push(x);}}
+  return out;}
+/* najmniejszy odstęp pary (min) albo Infinity: odstęp na wjeździe i na zjeździe z odcinka (szybszy dogania wolniejszego), wyprzedzenie w szlaku = kolizja */
+function evGap(x,y){const G=gcd(Math.round(x.takt),Math.round(y.takt));if(G<15)return Infinity;
+  const L=x.lim||5,s=((y.t-x.t)%G+G)%G,cu=CATCHUP&&(x.ln||1)<=1,dr=y.run-x.run;let b=Infinity;
+  for(const d of [s,s-G,s+G,s-2*G]){const a=Math.abs(d);if(a<L&&a<b)b=a;
+    if(cu&&dr!==0){const d2=d+dr,a2=Math.abs(d2);if(a2<L){if(a2<b)b=a2;}else if(a>=L&&(d>0)!==(d2>0))b=0;}}
+  return b;}
+/* kolizja pary w grupie arr (4/6/8 torów: dopiero gdy składów jednego kierunku jest więcej niż torów) */
+function evConf(arr,x,y){const g=evGap(x,y);if(!(g<Infinity))return Infinity;if((x.ln||1)>1&&!confOver(arr,x,y,x.lim||5,x.ln,x.id,y.id))return Infinity;return g;}
+/* krzyżowanie na odcinku jednotorowym: pociągi z przeciwnych stron w tym samym czasie w szlaku (bez mijanki pomiędzy) */
+function meetHit(x,y){const G=gcd(Math.round(x.takt),Math.round(y.takt));if(G<15)return false;const s=((y.t-x.t)%G+G)%G;
+  for(const d of [s,s-G,s+G])if(d<x.srun+0.5&&d+y.srun>-0.5)return true;return false;}
 function scheduleConflicts(){
-  const act=lines.filter(l=>l.takt>0);const ev=new Map();
-  for(const l of act){
-    const r=lineRoute(l);if(!r||r.length<2)continue;const m=MODELS[l.model]||MODELS[0],S=catSel(l.cat)?(l.stops||[]):null;
-    for(const dir of [1,-1]){
-      if(PH.map[l.id]==null)continue;              /* linia jeszcze bez slotu */
-      const i0=dir>0?0:r.length-1,iE=dir>0?r.length-1:0,o=planOffsets(r,i0,dir,m,l.cat,S);
-      const ph=(PH.map[l.id]||0)+(r[i0]===l.B&&l.A!==l.B?(PH.tb[l.id]||0)+(PH.w[l.id]||0):0);
-      for(let k=i0;k!==iE;k+=dir){const n=r[k];if(!stations[n].built)continue;
-        const t=((ph+(k===i0?0:(o[k]??0)+1))%l.takt+l.takt)%l.takt;
-        const key=confKey(l,n,r[k+dir]);if(!ev.has(key))ev.set(key,[]);ev.get(key).push({id:l.id,t,takt:l.takt,n,lim:confLim(n,r[k+dir]),k:confK(n,r[k+dir],catSkm(l.cat))});}
-    }
-  }
+  const ev=new Map();
+  for(const l of lines){if(!(l.takt>0)||PH.map[l.id]==null)continue;
+    for(const x of lineEvents(l,PH)){let a=ev.get(x.key);if(!a){a=[];ev.set(x.key,a);}a.push(x);}}
   const out=[];
-  ev.forEach((arr,key)=>{
+  ev.forEach(arr=>{
     for(let a=0;a<arr.length;a++)for(let b=a+1;b<arr.length;b++){const x=arr[a],y=arr[b];if(x.id===y.id)continue;
-      const d=cycD(x.t,x.takt,y.t,y.takt),L=x.lim||5;if(!(d<L))continue;
-      if(!confOver(arr,x,y,L,x.k||1,x.id,y.id))continue;   /* 4/6/8 torów: kolizja dopiero, gdy składów jednego kierunku jest więcej niż torów */
-      out.push({a:x.id,b:y.id,gap:d,node:x.n});}
+      const g=evConf(arr,x,y);if(g<Infinity)out.push({a:x.id,b:y.id,gap:g,node:x.n});}
   });
   return out;
 }
-/* szybkie kolizje jednej linii: zdarzenia pozostałych linii liczone raz (kontekst), linia badana — dla dowolnej fazy i taktu */
-function confCtx(){const ev=new Map();
-  for(const l of lines){if(!(l.takt>0)||PH.map[l.id]==null)continue;const r=lineRoute(l);if(!r||r.length<2)continue;const m=MODELS[l.model]||MODELS[0],S=catSel(l.cat)?(l.stops||[]):null;
-    for(const dir of [1,-1]){const i0=dir>0?0:r.length-1,iE=dir>0?r.length-1:0,o=planOffsets(r,i0,dir,m,l.cat,S);
-      const ph=(PH.map[l.id]||0)+(r[i0]===l.B&&l.A!==l.B?(PH.tb[l.id]||0)+(PH.w[l.id]||0):0);
-      for(let k=i0;k!==iE;k+=dir){const n=r[k];if(!stations[n].built)continue;const t=((ph+(k===i0?0:(o[k]??0)+1))%l.takt+l.takt)%l.takt;
-        const key=confKey(l,n,r[k+dir]);let a=ev.get(key);if(!a){a=[];ev.set(key,a);}a.push({id:l.id,t,takt:l.takt,n,lim:confLim(n,r[k+dir]),k:confK(n,r[k+dir],catSkm(l.cat))});}}}
-  return {ev,off:new Map()};}
-function lineConf(ctx,l,ph,takt){
-  const r=lineRoute(l);if(!r||r.length<2)return [];const m=MODELS[l.model]||MODELS[0],S=catSel(l.cat)?(l.stops||[]):null,out=[];
-  const M=slotModel(),TB=M.info[l.id]?M.info[l.id].TB:0;
-  for(const dir of [1,-1]){const i0=dir>0?0:r.length-1,iE=dir>0?r.length-1:0;const ck=l.id+"|"+dir;let o=ctx.off.get(ck);if(!o){o=planOffsets(r,i0,dir,m,l.cat,S);ctx.off.set(ck,o);}
-    const p0=ph+(r[i0]===l.B&&l.A!==l.B?TB:0);
-    for(let k=i0;k!==iE;k+=dir){const n=r[k];if(!stations[n].built)continue;const t=((p0+(k===i0?0:(o[k]??0)+1))%takt+takt)%takt;
-      const a=ctx.ev.get(confKey(l,n,r[k+dir]));if(!a)continue;
-      for(const y of a){if(y.id===l.id)continue;const d=cycD(t,takt,y.t,y.takt),L=y.lim||5;if(!(d<L))continue;
-        if(!confOver(a,{t,takt},y,L,y.k||1,l.id,y.id))continue;   /* 4/6/8 torów: kilka składów jednego kierunku jednocześnie */
-        out.push({o:y.id,node:n,gap:d});}}}
+/* kontekst kolizji: zdarzenia wszystkich linii (liczone raz); linia badana porównywana z pozostałymi */
+function ctxAdd(ctx,E){for(const x of E){let a=ctx.ev.get(x.key);if(!a){a=[];ctx.ev.set(x.key,a);}a.push(x);if(x.u){let b=ctx.mt.get(x.u);if(!b){b=[];ctx.mt.set(x.u,b);}b.push(x);}}}
+function ctxSet(ctx,l,E){const old=ctx.by[l.id];
+  if(old){const S=new Set(old);for(const x of old){const a=ctx.ev.get(x.key);if(a)ctx.ev.set(x.key,a.filter(z=>!S.has(z)));if(x.u){const b=ctx.mt.get(x.u);if(b)ctx.mt.set(x.u,b.filter(z=>!S.has(z)));}}}
+  ctx.by[l.id]=E;ctxAdd(ctx,E);}
+function confCtx(St){St=St||PH;const ctx={ev:new Map(),mt:new Map(),by:{},St,off:new Map(),ct:{}};
+  for(const l of lines){if(!(l.takt>0)||St.map[l.id]==null)continue;const E=lineEvents(l,St);ctx.by[l.id]=E;ctxAdd(ctx,E);}
+  return ctx;}
+function lineConf(ctx,l,ph,takt,o){
+  const E=lineEvents(l,ctx.St,Object.assign({ph,takt},o||{})),out=[];
+  for(const x of E){const a=ctx.ev.get(x.key);if(!a)continue;
+    for(const y of a){if(y.id===l.id)continue;const g=evConf(a,x,y);if(g<Infinity)out.push({o:y.id,node:x.n,gap:g});}}
   return out;}
+/* ocena rozkładu linii: kolizje z innymi (kontrakty ×4, bliższe — gorsze) i krzyżowania w szlaku jednotorowym (także z sobą samą) */
+function holdScore(l,ctx,o){
+  const E=lineEvents(l,ctx.St,o),ct=ctx.ct||{},myC=ct[l.id]?1:0;let c=0,n=0,m=0;const bad=[];
+  for(const x of E){let hit=false;const a=ctx.ev.get(x.key);
+    if(a)for(const y of a){if(y.id===l.id)continue;const g=evConf(a,x,y);if(g<Infinity){n++;hit=true;const L=x.lim||5;c+=(myC||ct[y.id]?4:1)*(1+Math.max(0,L-g)/L);}}
+    if(x.u){const b=ctx.mt.get(x.u);if(b)for(const y of b){if(y.id===l.id||y.sa===x.sa)continue;if(meetHit(x,y)){m++;hit=true;c+=0.5;}}
+      for(const y of E)if(y!==x&&y.u===x.u&&y.sa!==x.sa&&meetHit(x,y)){m+=0.5;hit=true;c+=0.25;}}
+    if(hit)bad.push(x);}
+  return {c,n,m,bad};}
+/* stacje, na których linia może mieć postój planowy: postój handlowy, bez zmiany czoła i z torem, na którym pociąg nie blokuje innych:
+   na linii jednotorowej mijanka (2 tory), na dwutorowej — co najmniej 3 tory (stojący skład nie zajmuje toru szlakowego) */
+function holdSt(n){const st=stations[n];if(!st||!st.built)return false;const b=Math.max(1+(st.extra||0),dblStation(n)?2:1);return dblStation(n)?b>=3:b>=2;}
+function holdCands(l,r,dir){const S=catSel(l.cat)?(l.stops||[]):null,o=[];
+  for(let k=1;k<r.length-1;k++){const n=r[k];if(!holdSt(n)||needsReversal(r,k))continue;if(!stopsAt(l.cat,n,r,S,k,dir))continue;o.push(k);}
+  return o;}
+/* kontrakty linii: czas A–B z postojami nie może przekroczyć wymogu (albo obecnego czasu, jeśli już jest dłuższy) */
+function holdCt(l,r){const own=l.owner||0,S=catSel(l.cat)?(l.stops||[]):null,o=[];
+  for(const t of (typeof V4!=="undefined"?V4.tenders:[])){if(t.state!=="active"||(t.winner||0)!==own||!(t.tmax>0))continue;
+    const a=r.indexOf(t.A),b=r.indexOf(t.B);if(a<0||b<0||!stopsAt(l.cat,t.A,r,S)||!stopsAt(l.cat,t.B,r,S))continue;
+    for(const dir of [1,-1]){const i0=dir>0?0:r.length-1,fr=dir>0?Math.min(a,b):Math.max(a,b),to=dir>0?Math.max(a,b):Math.min(a,b),of=planBase(l,r,i0,dir);
+      const base=(of[to]??0)-(fr===i0?0:(of[fr]??0)+1);o.push({d:dir>0?"f":"b",fr,to,cap:Math.max(t.tmax,base)-base});}}
+  return o;}
+function holdCtOK(H,C){for(const c of C){let s=0;const h=H[c.d]||{};for(const k in h){const q=+k;if(c.d==="f"?(q>c.fr&&q<c.to):(q<c.fr&&q>c.to))s+=h[k];}if(s>c.cap+1e-9)return false;}return true;}
+/* postój na krańcu po rozłożeniu postojów: f ≤ w (przyjazd na B przed odjazdem), b ≤ zapas − w */
+function holdW(H,w,sl){const f=hsum(H.f),b=hsum(H.b);if(f+b>sl+1e-9)return null;return Math.min(Math.max(w,f),sl-b);}
+function hSet(H,d,k,v){const o={f:Object.assign({},H.f),b:Object.assign({},H.b)};if(v>0)o[d][k]=v;else delete o[d][k];return o;}
+/* postoje planowe dla jednej linii (pozostałe stałe): najpierw usuwamy zbędne, potem zachłannie dokładamy tam, gdzie zostają kolizje */
+function holdFix(l,ctx,opt){
+  const St=ctx.St,lim=holdLim(l);if(!lim[0]||!(l.takt>0)||St.map[l.id]==null)return false;
+  const r=lineRoute(l);if(!r||r.length<3)return false;
+  const M=(opt&&opt.M)||slotModel(),inf=M.info[l.id];if(!inf)return false;const sl=inf.slack||0;
+  const C={1:holdCands(l,r,1),[-1]:holdCands(l,r,-1)};
+  const H0=lineHolds(l,St);if(!sl&&!H0)return false;if(!C[1].length&&!C[-1].length&&!H0)return false;
+  const CT=holdCt(l,r),pw=(ctx.ct&&ctx.ct[l.id])?2:1;
+  let H={f:Object.assign({},H0&&H0.f),b:Object.assign({},H0&&H0.b)},w=St.w[l.id]||0;
+  const sc=(H2,w2)=>{const z=holdScore(l,ctx,{h:H2,w:w2});z.v=z.c+HOLD_W*pw*(hsum(H2.f)+hsum(H2.b));return z;};
+  let cur=sc({f:{},b:{}},w);
+  /* dotychczasowe postoje: zostają, jeśli mieszczą się w postoju na krańcu (inaczej przesunęłyby odjazdy z krańca) albo pomagają po dopasowaniu */
+  {const w1=holdW(H,w,sl);if(w1==null)H={f:{},b:{}};else{const z=sc(H,w1);if(z.v<cur.v-1e-9){cur=z;w=w1;}else H={f:{},b:{}};}}
+  for(const d of ["f","b"])for(const k of Object.keys(H[d])){const H2=hSet(H,d,k,0),w2=holdW(H2,w,sl);if(w2==null)continue;const z=sc(H2,w2);if(z.v<=cur.v+1e-9){H=H2;w=w2;cur=z;}}
+  const its=(opt&&opt.it)||6;
+  for(let it=0;it<its&&cur.bad.length;it++){
+    const seen=new Set(),tries=[];
+    for(const x of cur.bad){const cs=C[x.dir].filter(q=>x.dir>0?q<=x.k:q>=x.k);const near=x.dir>0?cs.slice(-3):cs.slice(0,3);
+      for(const q of near){const key=x.dir+":"+q;if(!seen.has(key)){seen.add(key);tries.push({d:x.dir>0?"f":"b",q});}}if(tries.length>=8)break;}
+    let best=null;
+    for(const T of tries)for(let h=1;h<=lim[0];h++){const nv=(H[T.d][T.q]||0)+h;if(nv>lim[0])break;const H2=hSet(H,T.d,T.q,nv);if(hsum(H2[T.d])>lim[1])break;
+      const w2=holdW(H2,w,sl);if(w2==null)break;if(CT.length&&!holdCtOK(H2,CT))break;
+      const z=sc(H2,w2);if(z.v<cur.v-0.25&&(!best||z.v<best.z.v))best={z,H:H2,w:w2};}
+    if(!best)break;H=best.H;w=best.w;cur=best.z;}
+  const was=JSON.stringify(H0?{f:H0.f,b:H0.b}:{f:{},b:{}}),now=JSON.stringify(H);
+  if(was===now&&(St.w[l.id]||0)===w)return false;
+  if(!Object.keys(H.f).length&&!Object.keys(H.b).length)delete St.h[l.id];else{H.k=holdKey(l);St.h[l.id]=H;}
+  St.w[l.id]=w;if(St===PH)HOLDV++;return true;}
+/* postoje dla zestawu linii: od najmniej ważnych (to one czekają, linie kontraktowe i szybkie przejeżdżają) */
+function* holdPassGen(ids,St,opt){
+  if(!St.h)St.h={};const M=slotModel(),ctx=confCtx(St);ctx.ct=M.ctr||{};const ch=[];
+  const L=ids.map(id=>lines.find(q=>q.id===id)).filter(l=>l&&l.takt>0&&St.map[l.id]!=null&&M.info[l.id]).sort((a,b)=>((M.prio[a.id]||0)-(M.prio[b.id]||0))||(a.id-b.id));
+  for(const l of L){if(holdFix(l,ctx,Object.assign({M},opt))){ctxSet(ctx,l,lineEvents(l,St));ch.push(l.id);}if(!(opt&&opt.sync))yield;}
+  return ch;}
+function holdPass(ids,St,opt){const g=holdPassGen(ids,St,Object.assign({sync:1},opt));let r;while(!(r=g.next()).done);return r.value;}
 /* ostatnia deska ratunku: przesuwamy fazę jednej z kolidujących linii o pół taktu i sprawdzamy, czy jest lepiej */
 function fixConflicts(){const g=fixConflictsGen();let r;while(!(r=g.next()).done);return r.value;}
 function* fixConflictsGen(){
@@ -2658,8 +2738,9 @@ function* phaseJobGen(){
     const l=lines.find(x=>x.id===id);if(!l||!(l.takt>0))continue;
     const M=slotModel(),St=phClone(PH);delete St.map[id];St.w[id]=0;
     yield* optimizeSlotsGen([id],M,St);
+    holdPass([id],St);yield;
     if(!lines.includes(l)||PH.sig[id]!==lineKey(l))continue;          /* linia zmieniła się w międzyczasie — zajmie się nią kolejne zadanie */
-    PH.map[id]=St.map[id];PH.w[id]=St.w[id];PH.tb[id]=St.tb[id];l.last={};
+    PH.map[id]=St.map[id];PH.w[id]=St.w[id];PH.tb[id]=St.tb[id];if(St.h[id])PH.h[id]=St.h[id];else delete PH.h[id];HOLDV++;l.last={};
     yield;
     if(mins-SLOT_FULL_T>=360&&!jobsBusy("slots")&&(slotMinGap(M,id)<5||scheduleConflicts().some(c=>c.a===id||c.b===id)))dailySlots();   /* kolizja — pełna korekta w tle (najwyżej co 6 h gry) */
     yield;
@@ -2746,7 +2827,7 @@ function serviceLimit(ln,t){
 function shortTurnIdx(tr,ln,r,i,dir,t){
   if(ln.shortTurns===false)return null;               /* linia bez kursów skróconych — każdy kurs do krańca */
   const lim=serviceLimit(ln,t);if(lim===Infinity)return null;
-  const off=planOffsets(r,i,dir,tr.model,ln.cat,catSel(ln.cat)?(ln.stops||[]):null);
+  const off=planOffsets(r,i,dir,tr.model,ln.cat,catSel(ln.cat)?(ln.stops||[]):null,lineHold(ln,dir));
   const end=dir>0?r.length-1:0;
   if(t+(off[end]??0)<=lim)return null;
   /* tylko stacja z zajezdnią tego przewoźnika — najdalsza, do której zdąży przed końcem doby */
@@ -2773,7 +2854,7 @@ function parkShortTurn(tr){
    możliwie wcześnie, ale nie przed początkiem kursowania na swojej stacji. Ten sam przydział liczy tablica stacyjna. */
 function allocMornings(ln,mdir,ks,model,dayStart){
   const r=lineRoute(ln),i0=mdir>0?0:r.length-1;
-  const off=planOffsets(r,i0,mdir,model,ln.cat,catSel(ln.cat)?(ln.stops||[]):null);
+  const off=planOffsets(r,i0,mdir,model,ln.cat,catSel(ln.cat)?(ln.stops||[]):null,lineHold(ln,mdir));
   const ph=phaseOf(ln,r[i0]);
   const base=dayStart!=null?dayStart:(()=>{const d0=Math.floor(mins/1440)*1440;return d0+ln.h1*60<mins?d0+1440:d0;})();
   const start=base+ln.h1*60;
@@ -2955,6 +3036,12 @@ function tickTrain(tr,dt){
     tr.shortEnd=k==null?null:k;
   }
   if(!tr.boarded){boardPax(tr);tr.boarded=true;}
+  /* v0.96: pociąg trzyma rozkład — ze stacji pośredniej nie odjeżdża przed planowym odjazdem (także postój planowy) */
+  if(ln&&ln.takt>0&&!terminus&&tr.mode!=="service"&&tr.run&&tr.run.line===ln.id&&tr.run.step===tr.step&&tr.run.i0!==i){
+    const o=tr.run.off[i],hh0=tr.run.off.h&&tr.run.off.h[i];
+    if(o!=null&&(hh0||KEEP_TT)&&cap(r[i])-occAt(r[i])>=1){   /* czeka tylko, gdy na stacji zostaje wolny tor dla innych pociągów */const sd=tr.run.t0+o+1;
+      if(mins<sd-0.05-(hh0?0:KEEP_TOL)){tr.stuck=0;tr.dwell=Math.min(1,sd-mins);const ph=tr.run.off.h&&tr.run.off.h[i];
+        tr.why={code:"sched",txt:ph?"Postój planowy "+ph+" min (rozkład: wyprzedzanie / krzyżowanie / odstęp od innej linii).":"Czeka na odjazd według rozkładu."};return;}}}
   const why=whyBlocked(tr,i,legEnd(tr,i,j));
   if(why){tr.stuck+=dt;tr.why=why;return;}
   tr.why=null;
@@ -4796,21 +4883,53 @@ function fleetPopup(l,cur,snap,asg){
   if(typeof evQueue==="function"){EV.log.unshift({t:mins,k:"I",icon:"🚆",title:"Tabor linii "+lineName(l)+": "+asg+" → "+cur.need});if(EV.log.length>30)EV.log.pop();
     evQueue({id:"fleet",k:"I",icon:more?"🚆":"✅",t:more?"Za mało taboru na linii "+lineName(l):"Nadmiar taboru na linii "+lineName(l),text,lines:L,at:mins});}
 }
-function planOffsets(route,i0,dir,model,cat,stops){
+function planOffsets(route,i0,dir,model,cat,stops,hold){
   const {off}=runProfile(route,i0,dir,model,cat,stops);
   for(const k in off)off[k]=off[k]*1.05+2;                  /* rezerwa rozkładowa */
-  return off;
+  return hold?offH(off,route,i0,dir,hold):off;
 }
+/* v0.96: postoje planowe — dodatkowe minuty postoju na stacji (wyprzedzanie, krzyżowanie, rozdzielenie odjazdów).
+   Zapis: PH.h[id]={f:{indeks trasy:min},b:{…}} (f — kierunek A→B, b — B→A). Postój przesuwa wszystkie dalsze czasy kursu;
+   off[k] = planowany odjazd z k minus 1 min (jak dotąd), off.h[k] — postój planowy na k (przyjazd = off[k] − off.h[k]).
+   Postoje mieszczą się w zapasie obiegu (postój na krańcu), więc nie zmieniają odjazdów z krańców ani liczby składów. */
+const HOLD_LIM=[[8,15],[6,12],[4,8],[0,0],[2,4]];   /* wg kategorii (R, P, E, maglev, SKM): [jeden postój, suma na kurs] w min */
+const HOLD_W=0.06;                                  /* koszt minuty postoju w ocenie rozkładu (kolizja ≈ 1) */
+let HOLDV=0,KEEP_TT=true,KEEP_TOL=3,CATCHUP=true;                                        /* wersja postojów — do odświeżania czasów przejazdu */
+function holdLim(l){return magLine(l)?[0,0]:(HOLD_LIM[l.cat||0]||[4,8]);}
+function hsum(h){let s=0;if(h)for(const k in h)s+=h[k];return s;}
+function offH(base,r,i0,dir,h){
+  if(!h)return base;let any=false;for(const k in h)if(h[k]>0){any=true;break;}if(!any)return base;
+  const o=Object.assign({},base),H={};let cum=0;
+  for(let k=i0+dir;k>=0&&k<r.length;k+=dir){if(o[k]==null)break;o[k]+=cum;const x=h[k];if(x>0&&k!==0&&k!==r.length-1){o[k]+=x;cum+=x;H[k]=x;}}
+  Object.defineProperty(o,"h",{value:H,enumerable:false});return o;}
+/* postoje linii w kierunku dir (null, gdy brak albo nieaktualne po zmianie linii) */
+/* postoje zależą od trasy, postojów handlowych i taboru — nie od taktu (zmiana taktu ich nie unieważnia) */
+function holdKey(l){return l.A+":"+l.B+":"+(l.via??"")+":"+l.cat+":"+l.model+":"+(l.stops||[]).join(",")+(l.wps&&l.wps.length?":w"+l.wps.join("."):"")+":"+(l.pkBoth?1:0)+(l.pks?":"+JSON.stringify(l.pks):"");}
+function lineHolds(l,St){const S=St||PH;if(!S.h)return null;const H=S.h[l.id];if(!H||H.k!==holdKey(l))return null;return H;}
+function lineHold(l,dir,St){const H=lineHolds(l,St);return H?((dir>0?H.f:H.b)||null):null;}
+function holdTxt(l,St){const H=lineHolds(l,St);if(!H)return "";const r=lineRoute(l),o=[];
+  for(const [d,end] of [["f",r[r.length-1]],["b",r[0]]])for(const k in (H[d]||{}))if(H[d][k]>0&&r[k]!=null)o.push(N[r[k]].n+" +"+H[d][k]+" min (→ "+N[end].n+")");
+  return o.join(", ");}
+/* czasy bazowe kursu (bez postojów) — pamięć podręczna do czasu zmiany sieci */
+let POC={v:-1,m:new Map()};
+function planBase(l,r,i0,dir){if(POC.v!==netVer)POC={v:netVer,m:new Map()};
+  const k=l.id+"|"+dir+"|"+lineKey(l)+"|"+r.length;let o=POC.m.get(k);
+  if(!o){if(POC.m.size>5000)POC.m.clear();o=planOffsets(r,i0,dir,MODELS[l.model]||MODELS[0],l.cat,catSel(l.cat)?(l.stops||[]):null);POC.m.set(k,o);}
+  return o;}
+/* postój pociągu na trasie linii: tylko gdy jedzie po trasie swojej linii */
+function holdFor(tr){if(!tr||tr.repos||tr.ferry||!tr.route)return null;const l=lineOf(tr);if(!l)return null;const r=lineRoute(l);
+  if(!r||r.length!==tr.route.length||r[0]!==tr.route[0]||r[r.length-1]!==tr.route[r.length-1])return null;return lineHold(l,tr.step);}
 function runStart(tr,i,t0){
   const l=lineOf(tr);if(!l||!tr.route)return;
-  tr.run={t0,i0:i,line:l.id,off:planOffsets(tr.route,i,tr.step,tr.model,tr.cat,trStops(tr)),dep:{},maxD:0};
+  tr.run={t0,i0:i,line:l.id,step:tr.step,off:planOffsets(tr.route,i,tr.step,tr.model,tr.cat,trStops(tr),holdFor(tr)),dep:{},maxD:0};
   tr.run.dep[tr.route[i]]=mins;tr.delay=Math.max(0,mins-t0);
   if(tr.shortEnd!=null)plCancel(l.id,"sk",1);
 }
 function runArrive(tr,idx){
   const R=tr.run;if(!R||!tr.route)return;
-  const node=tr.route[idx],off=R.off[idx];
-  if(off==null)return;
+  const node=tr.route[idx],off0=R.off[idx];
+  if(off0==null)return;
+  const off=off0-((R.off.h&&R.off.h[idx])||0);       /* planowy przyjazd (bez postoju planowego) */
   const d=mins-(R.t0+off);tr.delay=Math.max(0,d);R.maxD=Math.max(R.maxD,d);
   repHit(node,d<=5?95:Math.max(0,95-(d-5)*7));
   /* przetargi: kurs A→B mierzony od odjazdu z drugiej stacji */
@@ -4841,7 +4960,7 @@ function runArrive(tr,idx){
 function runDepart(tr,node){if(tr.run)tr.run.dep[node]=mins;}
 /* rozkładowy czas przejazdu od ostatniego odjazdu z węzła other do bieżącego węzła (kurs może jechać po trasie wstecz) */
 function runSchedAB(tr,idx,other){const R=tr.run,r=tr.route;if(!R||!r)return null;const st=tr.step<0?1:-1;
-  for(let j=idx+st;j>=0&&j<r.length;j+=st)if(r[j]===other){const a=R.off[idx],b=R.off[j];return a!=null&&b!=null?Math.abs(a-b):null;}
+  for(let j=idx+st;j>=0&&j<r.length;j+=st)if(r[j]===other){const a=R.off[idx],b=R.off[j];return a!=null&&b!=null?Math.abs(a-((R.off.h&&R.off.h[idx])||0)-b):null;}
   return null;}
 /* --- częstotliwość i czasy z rozkładów (do konkurencji i wzrostu miast) --- */
 let freqCache=null;
@@ -4864,9 +4983,9 @@ let SIQ={m:-1,v:-1,nl:-1,nt:-1};
 function serviceInfo(){
   /* szybka ścieżka: w tej samej minucie gry, bez zmian sieci i liczby linii/pociągów — bez budowania podpisu */
   const mm=Math.floor(mins);
-  if(freqCache&&SIQ.m===mm&&SIQ.v===netVer&&SIQ.nl===lines.length&&SIQ.nt===trains.length)return freqCache;
-  SIQ={m:mm,v:netVer,nl:lines.length,nt:trains.length};
-  const ssig=lineSig()+"|"+netVer+"|"+trains.map(t=>t.line).join(","),psig=(typeof priceSig==="function"?priceSig():""),sig=ssig+"|"+psig;
+  if(freqCache&&SIQ.m===mm&&SIQ.v===netVer&&SIQ.nl===lines.length&&SIQ.nt===trains.length&&SIQ.hv===HOLDV)return freqCache;
+  SIQ={m:mm,v:netVer,nl:lines.length,nt:trains.length,hv:HOLDV};
+  const ssig=lineSig()+"|"+netVer+"|"+HOLDV+"|"+trains.map(t=>t.line).join(","),psig=(typeof priceSig==="function"?priceSig():""),sig=ssig+"|"+psig;
   if(freqCache&&freqCache.sig===sig)return freqCache;
   /* zmieniły się tylko ceny — odświeżamy najwyżej co 30 min gry (ceny wpływają na wybór pociągu, nie na rozkład) */
   if(freqCache&&freqCache.ssig===ssig&&mins-(freqCache.t||0)<30)return freqCache;
@@ -4875,10 +4994,10 @@ function serviceInfo(){
     const f=lineRunsPerDay(l);if(!f)continue;
     const r=lineRoute(l),S=catSel(l.cat)?(l.stops||[]):null;
     const st=r.map((n,k)=>stopsAt(l.cat,n,r,S,k,1)?k:-1).filter(k=>k>=0);
-    const off=planOffsets(r,0,1,MODELS[l.model],l.cat,S);off[0]=0;
+    const off=planOffsets(r,0,1,MODELS[l.model],l.cat,S,lineHold(l,1)),oh=off.h||{};off[0]=0;
     for(const k of st){dep[r[k]]+=f/2;if(!(l.owner))depP[r[k]]+=f/2;}
     const seenP=new Map();                 /* zajazd kieszeniowy: para stacji liczona raz (najkrótszy wariant) */
-    for(let a=0;a<st.length;a++)for(let b=a+1;b<st.length;b++){const i=r[st[a]],j=r[st[b]];if(i===j)continue;const t=off[st[b]]-off[st[a]],q=i*1000+j;if(!seenP.has(q)||seenP.get(q)>t)seenP.set(q,t);}
+    for(let a=0;a<st.length;a++)for(let b=a+1;b<st.length;b++){const i=r[st[a]],j=r[st[b]];if(i===j)continue;const t=off[st[b]]-(oh[st[b]]||0)-off[st[a]],q=i*1000+j;if(!seenP.has(q)||seenP.get(q)>t)seenP.set(q,t);}
     for(const [q,t] of seenP){
       const i=Math.floor(q/1000),j=q%1000;
       const pf=typeof priceF==="function"?priceF(l.owner||0,l,i,j):1,ow=l.owner||0;
@@ -7270,7 +7389,7 @@ function mgrMakeTender(force,R){
 
 /* --- inicjalizacja wariantu --- */
 function v5Init(mode,o){
-  GAME.mode=mode;FIRMS.length=0;nextFid=1;PROMOS.length=0;nextPid=1;SHARE={};SHM={};PX=pxEmpty();PH={map:{},sig:{},w:{},tb:{}};
+  GAME.mode=mode;FIRMS.length=0;nextFid=1;PROMOS.length=0;nextPid=1;SHARE={};SHM={};PX=pxEmpty();PH={map:{},sig:{},w:{},tb:{},h:{}};
   MGR.money=0;MGR.log=[];MGR.cnt={};MGR.nextTender=0;MGR.nextDec=0;MGR.nextInv=0;MGR.nextSlot=0;MGR.todo=[];MGR.ready=null;MGR.todoAge=0;MGR.active=mode==="operator";
   MGR.goals=[];MGR.gid=0;MGR.quadRev=1;MGR.lastNew=mins;MGR.elFund=0;MGR.elGoal=null;MGR.statPrev=null;MGR.plans=[];MGR.fdone={};MGR.capWarn={};MGR.lastCap=null;
   GAME.feeK=[1,1,1,1,1,1];GAME.reports=[];GAME.lastYear=gameYear(mins);GAME.card=null;
@@ -8056,7 +8175,7 @@ function cfgCheck(l,data,opt){
     const ol=lines.find(q=>q.id===o);if(!ol||!(ol.takt>0))continue;const G=gcd(Math.round(l.takt),Math.round(ol.takt));s+=G/ol.takt;}return Math.min(1,s);};
   const isCt=q=>q.tender!=null||lineContractTakt(q)!=null;
   const ctSet=list=>new Set(list.map(c=>c.a===id?c.b:c.a).filter(o=>{const q=lines.find(z=>z.id===o);return q&&isCt(q);}));
-  const sv={map:PH.map[id],sig:PH.sig[id],w:PH.w[id],tb:PH.tb[id]};
+  const sv={map:PH.map[id],sig:PH.sig[id],w:PH.w[id],tb:PH.tb[id],h:PH.h[id]};
   const bk=cfgApply(l,data);let res={ok:true};
   try{
     const es=new Set(routeEdges(lineRoute(l)));
@@ -8083,7 +8202,7 @@ function cfgCheck(l,data,opt){
       if(T.cT>T.cB+Math.max(2,Math.ceil(T.cB*0.1))){const x=T.ex;
         res={ok:false,kind:"slot",node:x?x.node:null,nodes:T.nodes,conf:[T.cB,T.cT],why:"w rozkładzie przybyłoby kolizji między liniami ("+T.cB+" → "+T.cT+" par linii z odjazdami zbyt blisko siebie: poniżej 3 min bez SBL, poniżej 1 min z SBL"+(x&&x.node!=null?", np. "+N[x.node].n:"")+")"};}
     }
-  }finally{cfgRestore(l,bk);PH.map[id]=sv.map;PH.sig[id]=sv.sig;PH.w[id]=sv.w;PH.tb[id]=sv.tb;}
+  }finally{cfgRestore(l,bk);PH.map[id]=sv.map;PH.sig[id]=sv.sig;PH.w[id]=sv.w;PH.tb[id]=sv.tb;if(sv.h)PH.h[id]=sv.h;else delete PH.h[id];}
   return res;
 }
 let TRIALB={k:null};
@@ -8101,23 +8220,24 @@ function slotTrial(l,bk,data){
   try{const tk=l.takt;if(wasPend)l.takt=0;
     try{const Mb=slotModel();ids=[...new Set(idsT0.concat(neigh(Mb)))].filter(q=>Mb.byId[q]||q===id);
       /* v0.841: wariant bazowy jest wspólny dla wszystkich sprawdzanych taktów tej linii — liczony raz */
-      const ck=Math.floor(mins)+"|"+netVer+"|"+id+"|"+lineKey(l)+"|"+ids.map(q=>q+":"+(PH.map[q]??"")+":"+(PH.w[q]||0)).join(",");
+      const ck=Math.floor(mins)+"|"+netVer+"|"+id+"|"+lineKey(l)+"|"+ids.map(q=>q+":"+(PH.map[q]??"")+":"+(PH.w[q]||0)+":"+(PH.h[q]?JSON.stringify(PH.h[q]):"")).join(",");
       if(TRIALB.k===ck){cB=TRIALB.cB;cBn=TRIALB.cBn;}
-      else{const idsB=ids.filter(q=>Mb.byId[q]&&(q!==id||!wasPend));const Sb=phClone(PH);Sb.fast=true;if(idsB.length)optimizeSlots(idsB,Mb,Sb);
+      else{const idsB=ids.filter(q=>Mb.byId[q]&&(q!==id||!wasPend));const Sb=phClone(PH);Sb.fast=true;if(idsB.length){optimizeSlots(idsB,Mb,Sb);}
         const cb=cnt(Sb,ids);cB=pairs(cb);cBn=cb.length;TRIALB={k:ck,cB,cBn};}}finally{l.takt=tk;}}
   finally{cfgRestore(l,now);}
   /* wariant ze zmianą — ten sam zbiór linii */
   const M2=slotModel(),idsT=ids.filter(q=>M2.byId[q]),St=phClone(PH);St.fast=true;delete St.map[id];St.w[id]=0;
-  optimizeSlots(idsT,M2,St);const cl=cnt(St,ids);
-  const trial={ids:idsT,map:{},w:{},tb:{}};for(const q of idsT){trial.map[q]=St.map[q];trial.w[q]=St.w[q]||0;trial.tb[q]=St.tb[q];}
+  optimizeSlots(idsT,M2,St);holdPass(idsT,St,{it:6});const cl=cnt(St,ids);
+  const trial={ids:idsT,map:{},w:{},tb:{},h:{}};for(const q of idsT){trial.map[q]=St.map[q];trial.w[q]=St.w[q]||0;trial.tb[q]=St.tb[q];trial.h[q]=St.h[q]||null;}
   const ex=cl.find(c=>c.a===id||c.b===id)||cl[0]||null;
-  const nodes=[...new Set(cl.filter(c=>c.gap<3).map(c=>c.node))];   /* miejsca kolizji — dla planera inwestycji */
+  const nodes=[...new Set(cl.filter(c=>c.gap<3&&(c.a===id||c.b===id)).map(c=>c.node))];   /* miejsca kolizji tej linii — dla planera inwestycji */
   return {cB,cT:pairs(cl),cBn,cTn:cl.length,trial,ex,nodes};
 }
 /* zastosowanie próbnego rozkładu po przyznaniu slotów */
 function trialCommit(res){
   if(!res||!res.trial)return;const T=res.trial;
   for(const q of T.ids){const ql=lines.find(z=>z.id===q);if(!ql||T.map[q]==null)continue;PH.map[q]=T.map[q];PH.w[q]=T.w[q];if(T.tb[q]!=null)PH.tb[q]=T.tb[q];PH.sig[q]=lineKey(ql);ql.last={};
+    if(T.h){if(T.h[q])PH.h[q]=T.h[q];else delete PH.h[q];HOLDV++;}
     trains.forEach(t=>{if(t.line===q)t.depSlot=null;});}
 }
 /* czy zmiana dokłada kursy na którymkolwiek odcinku (wtedy potrzebna zgoda zarządcy) */
@@ -8189,7 +8309,7 @@ function* slotAuditGen(){              /* v0.82: generator — korekta linia po 
     /* wolny slot przy danym takcie: bez kolizji z kontraktem i bez dużych kolizji z innymi */
     const findFree=tk=>{const old=y.takt;let fix=null;
       try{y.takt=tk;const phs=quickPhases(y,16);y.takt=old;
-        for(const ph of phs){const c2=lineConf(CTX,y,ph,tk);let s2=0,ct2=false;const seen=new Set();
+        for(const ph of phs){const c2=lineConf(CTX,y,ph,tk,{w:0,h:null});let s2=0,ct2=false;const seen=new Set();
           for(const c of c2){if(seen.has(c.o))continue;seen.add(c.o);const q=byId.get(c.o);if(!q)continue;s2+=gcd(Math.round(tk),Math.round(q.takt))/q.takt*(isCt(q)?2:1);}
           if(s2<0.25){fix=ph;break;}}}
       finally{y.takt=old;}
@@ -8197,6 +8317,11 @@ function* slotAuditGen(){              /* v0.82: generator — korekta linia po 
     {const fix=findFree(y.takt);
       if(fix!=null){phSet(y,fix);y.last={};trains.forEach(t=>{if(t.line===y.id)t.depSlot=null;});out.push(lineName(y)+(y.owner?"":" (Ty)")+" — nowy slot");nOther++;CTX=confCtx();
         capNote(y,"Korekta rozkładu: "+lineName(y)+(y.owner?" ("+ownerName(y.owner)+")":"")+" kolidowała "+(ct?"z linią kontraktową "+lineName(ct):"z innymi liniami")+" — zarządca przesunął jej odjazdy na wolny slot. Takt bez zmian ("+y.takt+" min).",true,"");
+        continue;}}
+    /* v0.96: zanim rozrzedzi takt — postój planowy (pociąg czeka kilka minut na stacji z wolnym torem) */
+    {const ht=holdTry(y,byId,isCt);
+      if(ht){out.push(lineName(y)+(y.owner?"":" (Ty)")+" — postój planowy");nOther++;CTX=confCtx();
+        capNote(y,"Korekta rozkładu: "+lineName(y)+(y.owner?" ("+ownerName(y.owner)+")":"")+" kolidowała "+(ct?"z linią kontraktową "+lineName(ct):"z innymi liniami")+" — zarządca wyznaczył postój planowy: "+ht+". Takt bez zmian ("+y.takt+" min).",true,"");
         continue;}}
     if(y.auditT!=null&&mins-y.auditT<1440)continue;                 /* rozrzedzenie najwyżej o krok na miesiąc */
     const T=CATS[y.cat].takt.slice().sort((a,b)=>a-b),ti=T.indexOf(y.takt);if(ti<0||ti>=T.length-1)continue;
@@ -8213,7 +8338,15 @@ function* slotAuditGen(){              /* v0.82: generator — korekta linia po 
   }
   if(out.length)mgrLog("⏱️ Zarządca koryguje rozkład (kolizje): "+out.join(", ")+"; odcinki skierowane do rozbudowy.");
 }
-function phSet(l,ph){PH.map[l.id]=ph;PH.sig[l.id]=lineKey(l);PH.w[l.id]=0;const M=slotModel();if(M.info[l.id])PH.tb[l.id]=M.info[l.id].TB;}
+/* postój planowy jako korekta rozkładu: przyjęty, gdy kolizji zostaje mniej niż próg rozrzedzenia */
+function holdTry(y,byId,isCt){
+  const sv={h:PH.h[y.id],w:PH.w[y.id],sig:PH.sig[y.id]};const ctx=confCtx(PH),M=slotModel();ctx.ct=M.ctr||{};
+  if(!holdFix(y,ctx,{M,it:8}))return null;
+  const c2=lineConf(confCtx(PH),y,PH.map[y.id],y.takt);let s2=0;const seen=new Set();
+  for(const c of c2){if(seen.has(c.o))continue;seen.add(c.o);const q=byId.get(c.o);if(!q)continue;s2+=gcd(Math.round(y.takt),Math.round(q.takt))/q.takt*(isCt(q)?2:1);}
+  if(s2<0.25){y.last={};trains.forEach(t=>{if(t.line===y.id)t.depSlot=null;});return holdTxt(y)||"krótki postój";}
+  if(sv.h)PH.h[y.id]=sv.h;else delete PH.h[y.id];PH.w[y.id]=sv.w;PH.sig[y.id]=sv.sig;HOLDV++;return null;}
+function phSet(l,ph){PH.map[l.id]=ph;PH.sig[l.id]=lineKey(l);PH.w[l.id]=0;if(PH.h&&PH.h[l.id]){delete PH.h[l.id];HOLDV++;}const M=slotModel();if(M.info[l.id])PH.tb[l.id]=M.info[l.id].TB;}
 /* zajezdnia jako rozwiązanie braku torów na krańcu */
 function depotFixCost(n,o,k){const z=depotSize(n,o);return DEPOT_SIZES[k].cost-(z>=0?DEPOT_SIZES[z].cost:0);}
 function depotDo(n,o,k){const st=stations[n];
@@ -12117,6 +12250,7 @@ function renderLnList(){
       +(l.chgReq?"<br><span style='color:#f2c14e'>📝 wniosek o sloty: "+cfgTxt(l.chgReq.data,l)+(l.chgReq.wait?" — czeka na pełny przydział (01:00 / 13:00)":l.chgReq.offer?" — decyzja w powiadomieniach":" — decyzja o "+slotTimeTxt())+"</span>":"")
       +(l.pending?"<br><span style='color:#f2c14e'>⏳ "+(l.pending.waitFull?"czeka na pełną przepustowość (co "+(l.pending.want||l.takt)+" min) — sprawdzane o 01:00 i 13:00":"czeka na przydział slotów — najbliższy o "+slotTimeTxt())+"</span>":"")
       +(()=>{const c=lineContractTxt(l,true);return c.length?"<br>"+c.join("<br>"):"";})()
+      +(()=>{const h=holdTxt(l);return h?"<br><span style='color:var(--mut)'>⏸️ postoje planowe: "+h+"</span>":"";})()
       +(l.cut&&l.takt0!=null?"<br><span style='color:var(--amber)'>🚦 takt ograniczony przez zarządcę (docelowo "+l.takt0+" min, wąskie gardło "+N[l.cut.a].n+" – "+N[l.cut.b].n
         +(()=>{const x=sectionList().find(z=>(z.a===l.cut.a&&z.b===l.cut.b)||(z.a===l.cut.b&&z.b===l.cut.a));if(!x)return "";let ld=0;for(const q of secLines(x))ld+=secRuns(q,x);
           return ": "+Math.round(ld)+"/"+Math.round(secCap(x))+" kursów/dobę"+(ld<=secCap(x)*0.95?" — jest już miejsce, takt wróci przy najbliższym przydziale slotów":"");})()+")</span>":"")+"</div>";
@@ -14168,8 +14302,8 @@ function stationBoard(i,kind){
       const i0=dir>0?0:r.length-1,iEnd=dir>0?r.length-1:0,ph=phaseOf(l,r[i0]);
       if(kind==="dep"&&idx===iEnd)continue;          /* stąd już nie odjeżdża */
       if(kind==="arr"&&idx===i0)continue;            /* tu dopiero rusza */
-      let off=0;
-      if(idx!==i0){const o=planOffsets(r,i0,dir,m,l.cat,S);off=(o[idx]??0)+(kind==="dep"?1:0);}
+      let off=0,hd=0;
+      if(idx!==i0){const o=planOffsets(r,i0,dir,m,l.cat,S,lineHold(l,dir));hd=(o.h&&o.h[idx])||0;off=(o[idx]??0)+(kind==="dep"?1:-hd);}
       const dest=N[r[iEnd]].n,from=N[r[i0]].n;
       const via=[];for(let k=idx+dir;k!==iEnd&&k>=0&&k<r.length;k+=dir){const n=r[k];
         if(stopsAt(l.cat,n,r,S)&&N[n].p>=5000&&via.length<2)via.push(N[n].n);}
@@ -14189,7 +14323,7 @@ function stationBoard(i,kind){
         let delay=null;
         const tr=trains.find(x=>x.run&&x.run.line===l.id&&Math.abs(x.run.t0-s)<0.5&&x.run.i0===i0);
         if(tr)delay=Math.round(tr.delay||0);
-        out.push({t,cat:l.cat,line:l.id,dest:dst,via:shortTxt?[]:via,owner:l.owner||0,delay,past:t<now-1,short:shortTxt});
+        out.push({t,cat:l.cat,line:l.id,dest:dst,via:shortTxt?[]:via,owner:l.owner||0,delay,past:t<now-1,short:shortTxt,hold:hd});
       }
     }
   }
@@ -14210,7 +14344,7 @@ function stationBoard(i,kind){
         if(sk!=null&&sk>=0)cnt[sk]=(cnt[sk]||0)+1;
       }
       const mdir=-dir,im=mdir>0?0:r.length-1,iEnd=mdir>0?r.length-1:0;
-      const offM=planOffsets(r,im,mdir,m,l.cat,S);
+      const offM=planOffsets(r,im,mdir,m,l.cat,S,lineHold(l,mdir));
       const ks=[];for(const k in cnt)for(let n=0;n<cnt[k];n++)ks.push(+k);
       const ts=ks.length?allocMornings(l,mdir,ks,m,d0):[];
       ks.forEach((K,j)=>{
@@ -14242,7 +14376,7 @@ function renderBoard(i){
     const cls=r.past?" past":(!nextMarked?(nextMarked=true," next"):"");
     h+="<div class='br"+cls+"'"+(cls===" next"?" id='sbNext'":"")+"><span class='bt'>"+hhmm(r.t)+"</span><span><b style='color:"+C.col+"'>"+C.code+"</b> "+r.line
       +(GAME.mode!=="classic"?"<i style='display:inline-block;width:7px;height:7px;border-radius:2px;margin-left:4px;background:"+oc+"'></i>":"")
-      +"</span><span class='bd'>"+r.dest+(r.short?"<small style='color:var(--amber)'>"+r.short+"</small>":r.via.length?"<small>przez "+r.via.join(", ")+"</small>":"")+"</span><span>"+st
+      +"</span><span class='bd'>"+r.dest+(r.short?"<small style='color:var(--amber)'>"+r.short+"</small>":r.via.length?"<small>przez "+r.via.join(", ")+"</small>":"")+(r.hold?"<small style='color:var(--mut)'>⏸️ postój planowy "+r.hold+" min</small>":"")+"</span><span>"+st
       +(GAME.mode!=="classic"?"<small>"+ownerName(r.owner)+"</small>":"")+"</span></div>";
   }
   return h+"</div>";
@@ -14959,8 +15093,9 @@ function reportsHtml(){
 }
 
 /* ==================== LISTA ZMIAN ==================== */
-const GAME_VER="0.952";
+const GAME_VER="0.96";
 const CHANGELOG=[
+ {v:"0.96",d:"październik 2026",c:["Postoje planowe: zarządca może zatrzymać pociąg na kilka minut na stacji z wolnym torem (wyprzedzanie, krzyżowanie, rozdzielenie odjazdów), zanim rozrzedzi takt; limity wg kategorii.","Kontrola rozkładu uwzględnia doganianie wolniejszego pociągu na odcinku i krzyżowania na liniach jednotorowych.","Pociągi nie odjeżdżają ze stacji pośrednich więcej niż 3 min przed rozkładem; postoje planowe widać w rozkładzie linii i na tablicach."]},
  {v:"0.95",d:"październik 2026",c:["Przebudowa przeciążonych węzłów aglomeracyjnych w partnerstwie publiczno-prywatnym: Warszawa do 8 torów, inne do 6 torów, z parą tylko dla SKM.","SBL: odjazdy po jednym torze co 1 min.","4 i więcej torów: kilka składów jednego kierunku jednocześnie, także w kontroli rozkładu."]},
  {v:"0.94",d:"październik 2026",c:["Pasażerowie jadą pociągiem z zajazdem; gdy obok jeździ linia bez zajazdu, część z nich (zależnie od grupy) woli na nią poczekać.","Zawieszanie kontraktów przez zamknięte przejście graniczne; propozycje dofinansowania rozbudowy przy ograniczeniach przepustowości.","SKM: tolerancja 5% liczby kursów w kontraktach."]},
  {v:"0.93",d:"październik 2026",c:["Przetargi nie dublują tras trwających przetargów i kontraktów; stacje jednego miasta liczone razem.","Zarządca najpierw usuwa wąskie gardła na trasach kontraktów z opóźnieniami.","Ostrzeżenie, gdy kursy kontraktu przepadają przez trasę lub ustawienia linii."]},
@@ -15242,13 +15377,14 @@ function cofPlan(l,tk,maint){
     if(C&&!C.ok&&C.x&&!note)note="potrzeba więcej niż "+picks.length+" inwestycji";
     if(C&&C.ok&&!maint)C=cofTest(l,tk,false);          /* pełna kontrola: tory na krańcach i kolizje w rozkładzie */
     /* v0.941: kolizje w rozkładzie — SBL (co 2 min) i 4 tory (dwa składy na kierunek) na odcinkach przy miejscu kolizji */
-    for(let g=0;g<4&&C&&!C.ok&&C.kind==="slot"&&!maint;g++){
+    const tq=performance.now();      /* v0.96: limit czasu planera — pełna kontrola rozkładu jest kosztowna przy dużej sieci */
+    for(let g=0;g<4&&C&&!C.ok&&C.kind==="slot"&&!maint&&performance.now()-tq<6000;g++){
       const r=lineRoute(l),es=new Set(routeEdges(r)),cnt=X=>X&&X.conf?X.conf[1]:(X&&X.ok?0:1e9);
       /* v0.951: wszystkie miejsca kolizji na trasie linii, nie tylko pierwsze */
       const nd=new Set((C.nodes&&C.nodes.length?C.nodes:[C.node]).filter(n=>n!=null)),near=e=>!nd.size||nd.has(EDGES[e].a)||nd.has(EDGES[e].b);
       const xs=sectionList().filter(x=>x.edges.some(e=>es.has(e)&&near(e)));
       let best=null,bC=null;
-      for(const x of xs)for(const A of cofActs(x,true).filter(A=>A.a.kind==="sbl"||A.a.kind==="quad")){const sn=cofSnap();let C2;
+      for(const x of xs)for(const A of cofActs(x,true).filter(A=>A.a.kind==="sbl"||A.a.kind==="quad")){if(performance.now()-tq>6000)break;const sn=cofSnap();let C2;
         try{infraActDo(A.a);C2=cofTest(l,tk,false);}finally{cofRest(sn);}
         if(C2.ok||cnt(C2)<cnt(bC||C)){if(!best||C2.ok&&!bC.ok||cnt(C2)<cnt(bC)||(cnt(C2)===cnt(bC)&&A.cost<best.A.cost)){best={A,x};bC=C2;}}}
       if(!best)break;
